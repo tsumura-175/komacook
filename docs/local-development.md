@@ -95,7 +95,7 @@ npm run test:visual:update
 
 ローカル接続値は `.env.local` に保存します。このファイルはGit管理対象外です。本番環境ではSupabase CloudのURLとPublishable Keyへ差し替えます。
 
-本番のお問い合わせ送信では、利用するメール事業者のSMTP情報を `SMTP_HOST`、`SMTP_PORT`、`SMTP_SECURE`、`SMTP_USER`、`SMTP_PASSWORD` に設定します。運営者の受信先は `CONTACT_TO_EMAIL`、送信元は `CONTACT_FROM_EMAIL` に設定します。
+メール送信はSMTPではなくResendのHTTP APIを使用します。本番では `RESEND_API_KEY` をSecret、`EMAIL_FROM` と `CONTACT_TO_EMAIL` を環境変数に設定します。ローカルで外部送信を避ける場合は `MAIL_DELIVERY_MODE=disabled` を設定してください。この場合、フォーム送信は成功扱いになりますが実メールは送信されません。
 
 問い合わせの連続送信制限でIP等を不可逆化するため、本番では十分に長いランダム値を`CONTACT_RATE_LIMIT_SECRET`へ設定します。この値を変更すると既存の制限識別子との対応が切り替わります。
 

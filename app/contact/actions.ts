@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { headers } from "next/headers";
 import { contactRateLimitIdentifier, contactRequestIdentity } from "../../lib/contact-rate-limit";
-import { createMailTransport } from "../../lib/email";
+import { queueTransactionalEmail } from "../../lib/email";
 import { createClient } from "../../lib/supabase/server";
 
 const schema = z.object({
@@ -42,10 +42,9 @@ export async function sendContact(_: ContactState, formData: FormData): Promise<
   let errorCode: string | null = null;
   try {
     const to = process.env.CONTACT_TO_EMAIL;
-    const from = process.env.CONTACT_FROM_EMAIL;
-    if (!to || !from) throw new Error("RECIPIENT_NOT_CONFIGURED");
-    await createMailTransport().sendMail({
-      from: `こまクック <${from}>`, to, replyTo: parsed.data.email,
+    if (!to) throw new Error("RECIPIENT_NOT_CONFIGURED");
+    await queueTransactionalEmail("contact", {
+      to, replyTo: parsed.data.email,
       subject: `【こまクック／${parsed.data.type}】${parsed.data.subject}`,
       text: [`お名前: ${parsed.data.name}`, `返信先: ${parsed.data.email}`, `種別: ${parsed.data.type}`, `件名: ${parsed.data.subject}`, "", parsed.data.body].join("\n"),
     });

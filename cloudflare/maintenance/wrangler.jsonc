@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "komacook-maintenance",
+  "main": "index.ts",
+  "compatibility_date": "2026-09-21",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "komacook-production",
+      "database_id": "9bdf8b58-5326-48ab-9054-472ae2ae35f1",
+      "migrations_dir": "../d1/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "komacook-images-production"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/15 * * * *", "10 18 * * *"]
+  }
+}

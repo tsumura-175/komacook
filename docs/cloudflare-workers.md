@@ -15,7 +15,7 @@ Workers側のServer Component、Route Handler、Server Actionからは`cloudflar
 
 ## D1スキーマとマスタデータ
 
-`cloudflare/d1/migrations/0001_initial_schema.sql`は、Supabase Authを認証専用として残し、アプリケーションデータをD1へ置くSQLiteスキーマである。いいね、コレクション、OCRのテーブルは含めない。
+`cloudflare/d1/migrations/0001_initial_schema.sql`は、Supabase Authを認証専用として残し、アプリケーションデータをD1へ置くSQLiteスキーマである。`0002_operational_queues.sql`は、メール再送キューとR2の中断アップロード掃除用の管理テーブルを追加する。いいね、コレクション、OCRのテーブルは含めない。
 
 初期公開レシピや擬似ユーザーは投入しない。`cloudflare/d1/seed.sql`はカテゴリだけを投入するため、実運用にも安全に適用できる。
 
@@ -58,9 +58,29 @@ CloudflareダッシュボードのSettings → Variables and Secretsに、Produc
 - `SUPABASE_SECRET_KEY`（Secret）
 - `CRON_SECRET`（Secret）
 - `CONTACT_RATE_LIMIT_SECRET`（Secret）
-- メール送信を外部サービスへ移すまでに必要なメール関連のSecret
+- `RESEND_API_KEY`（Secret）
+- `EMAIL_FROM`（例: `こまクック <noreply@komacook.jp>`）
+- `CONTACT_TO_EMAIL`（`daiki.hayakawa.work@gmail.com`）
+- `REPORT_TO_EMAIL`（未設定時は`CONTACT_TO_EMAIL`を使用）
+- `EMAIL_DELIVERY_BACKEND=d1`（Variable。Cloudflare本番では必須）
 
 `NEXT_PUBLIC_`以外、Supabaseの管理キー、Cloudflare API TokenはGitに置かない。
+
+## メール再送・R2掃除Cron
+
+`cloudflare/maintenance/wrangler.jsonc`は公開アプリと分けたメンテナンスWorkerである。15分ごとにD1の`mail_outbox`を送信・再送し、期限切れのメール本文と中断したR2アップロードを掃除する。毎日03:10 JST（18:10 UTC）にも同じ掃除を行う。
+
+初回だけ、Cloudflareに次のSecretを設定してデプロイする。値をGitへ保存してはならない。
+
+```powershell
+npx wrangler secret put RESEND_API_KEY --config cloudflare/maintenance/wrangler.jsonc
+npx wrangler secret put EMAIL_FROM --config cloudflare/maintenance/wrangler.jsonc
+npx wrangler secret put CRON_SECRET --config cloudflare/maintenance/wrangler.jsonc
+npx wrangler secret put SITE_URL --config cloudflare/maintenance/wrangler.jsonc
+npm run maintenance:deploy
+```
+
+Cron Workerはメールキューと一時画像を対象にし、毎日03:10 JSTには既存の退会削除APIも認証付きで起動する。`SITE_URL` は `https://komacook.jp`、`CRON_SECRET` は公開アプリに設定したものと完全に同一の値にする。退会データをD1へ移すまでは、削除API自体はSupabaseを利用する。
 
 ## 画像処理
 
@@ -68,4 +88,4 @@ Workers Freeではネイティブ`sharp`を実行できない。完成写真・�
 
 ## 現時点の移行範囲
 
-Workersの実行基盤とD1/R2バインディングは設定済み。既存のレシピ・管理・通知データはまだSupabase PostgreSQLのRPC/RLSに依存しているため、D1スキーマとリポジトリ層への置換は別の実装単位で行う。未移行のままSupabaseのDBやStorageを停止してはならない。
+Workersの実行基盤とD1/R2バインディング、D1の初期スキーマ、メール再送・一時画像掃除Workerは設定済みである。一方、既存のレシピ・管理・通知の本体はまだSupabase PostgreSQLのRPC/RLSに依存している。この段階でSupabaseのDBやStorageを停止するとアプリは壊れる。D1リポジトリ層とR2画像APIへの置換が完了するまで停止してはならない。

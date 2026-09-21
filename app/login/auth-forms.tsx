@@ -26,8 +26,8 @@ export function ConfirmationPanel({ email, onBack }: { email: string; onBack: ()
   return <section className="confirmation-panel"><span className="confirmation-symbol"><FontAwesomeIcon icon={faEnvelope} /></span><h2>確認メールをご確認ください</h2><p>登録を完了するためのメールを送信しました。</p><strong>{email.replace(/(^.).*(@.*$)/, "$1***$2")}</strong><ol><li>受信したメールを開く</li><li>「登録を確認する」を押す</li><li>初回設定へ進む</li></ol><form action={action} onSubmit={() => setSeconds(60)}><input type="hidden" name="email" value={email} /><Status state={state} /><button className="outline-action full-action" disabled={pending || seconds > 0}>{pending ? "再送中…" : seconds ? `${seconds}秒後に再送できます` : "確認メールを再送する"}</button></form><button className="auth-text-button" type="button" onClick={onBack}>メールアドレスを変更する</button></section>;
 }
 
-export function AuthForms() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+export function AuthForms({ initialMode = "login" }: { initialMode?: "login" | "signup" }) {
+  const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [email, setEmail] = useState("");
   const [loginVisible, setLoginVisible] = useState(false);
   const [dismissed, setDismissed] = useState<string>();

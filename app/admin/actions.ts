@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createMailTransport } from "../../lib/email";
+import { queueTransactionalEmail } from "../../lib/email";
 import { getSiteUrl } from "../../lib/site-url";
 import { createClient } from "../../lib/supabase/server";
 
@@ -50,10 +50,8 @@ async function notifyUser(
     emailDeliveryStatus = "failed";
     try {
       const { data: recipientEmail, error: emailLookupError } = await supabase.rpc("admin_get_user_email", { target_user_id: input.userId });
-      const from = process.env.NOTIFICATION_FROM_EMAIL ?? process.env.CONTACT_FROM_EMAIL;
-      if (emailLookupError || !recipientEmail || !from) throw new Error("NOTIFICATION_EMAIL_NOT_CONFIGURED");
-      await createMailTransport().sendMail({
-        from: `こまクック <${from}>`,
+      if (emailLookupError || !recipientEmail) throw new Error("NOTIFICATION_EMAIL_NOT_CONFIGURED");
+      await queueTransactionalEmail("member_notification", {
         to: recipientEmail,
         subject: `【こまクック】${input.title}`,
         text: [input.title, "", input.body, "", `お問い合わせ: ${getSiteUrl()}/contact`].join("\n"),
