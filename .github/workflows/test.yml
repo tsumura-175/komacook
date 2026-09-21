@@ -1,0 +1,44 @@
+name: Regression tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase start
+      - name: Create local test environment
+        shell: bash
+        run: |
+          npx supabase status -o env > /tmp/supabase.env
+          source /tmp/supabase.env
+          {
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3010"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            echo "CRON_SECRET=local-ci-secret"
+            echo "CONTACT_RATE_LIMIT_SECRET=local-ci-contact-secret"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=55325"
+            echo "SMTP_SECURE=false"
+            echo "CONTACT_TO_EMAIL=admin@komacook.local"
+            echo "CONTACT_FROM_EMAIL=no-reply@komacook.local"
+            echo "NOTIFICATION_FROM_EMAIL=no-reply@komacook.local"
+          } > .env.local
+      - run: npm run test:all
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

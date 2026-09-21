@@ -1,0 +1,18 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronRight, faEnvelope, faThumbtack } from "@fortawesome/free-solid-svg-icons";
+import Link from "next/link";
+import { BottomNav, SiteFooter, SiteHeader } from "../components/site-shell";
+import { createClient } from "../../lib/supabase/server";
+
+export default async function NoticesPage() {
+  const supabase = await createClient();
+  const [{ data: notices }, { data: authData }] = await Promise.all([supabase.from("notices").select("id,title,body,is_pinned,publish_at").order("is_pinned", { ascending: false }).order("publish_at", { ascending: false }), supabase.auth.getUser()]);
+  const { data: personalNotifications } = authData.user ? await supabase.from("user_notifications").select("id,title,body,read_at,created_at").eq("user_id", authData.user.id).order("created_at", { ascending: false }) : { data: [] };
+  const ids = (notices ?? []).map((notice) => notice.id);
+  const { data: reads } = authData.user && ids.length ? await supabase.from("notice_reads").select("notice_id").eq("user_id", authData.user.id).in("notice_id", ids) : { data: [] };
+  const readIds = new Set((reads ?? []).map((read) => read.notice_id));
+  return <div className="app-shell member-page-shell"><SiteHeader /><main className="member-page-main"><header className="member-page-heading"><div><h1>お知らせ</h1><p>こまクックからの重要なご案内を確認できます。</p></div></header>
+    {authData.user && (personalNotifications ?? []).length ? <section className="notice-group" aria-labelledby="personal-notices-heading"><div className="notice-group-heading"><FontAwesomeIcon icon={faEnvelope} /><div><h2 id="personal-notices-heading">あなたへのお知らせ</h2><p>運営による対応内容を、本人だけに表示しています。</p></div></div><div className="simple-list">{personalNotifications?.map((notice) => <article key={notice.id} className={notice.read_at ? "" : "is-unread"}><div><div className="notice-labels"><span className="notice-audience">個別</span>{notice.read_at ? null : <span className="notice-unread">未読</span>}</div><h3><Link href={`/notifications/${notice.id}`}>{notice.title}</Link></h3><p>{notice.body.length > 90 ? `${notice.body.slice(0, 90)}…` : notice.body}</p></div><div><time>{new Date(notice.created_at).toLocaleDateString("ja-JP")}</time><Link className="outline-icon-button" href={`/notifications/${notice.id}`} aria-label={`${notice.title}を読む`}><FontAwesomeIcon icon={faChevronRight} /></Link></div></article>)}</div></section> : null}
+    <section className="notice-group" aria-labelledby="general-notices-heading"><div className="notice-group-heading"><div><h2 id="general-notices-heading">運営からのお知らせ</h2><p>サービス全体に関するご案内です。</p></div></div><div className="simple-list" aria-label="お知らせ一覧">{(notices ?? []).length ? notices?.map((notice) => <article key={notice.id} className={!readIds.has(notice.id) && authData.user ? "is-unread" : ""}><div><div className="notice-labels">{notice.is_pinned ? <span className="notice-pin"><FontAwesomeIcon icon={faThumbtack} />固定</span> : null}{!readIds.has(notice.id) && authData.user ? <span className="notice-unread">未読</span> : null}</div><h3><Link href={`/notices/${notice.id}`}>{notice.title}</Link></h3><p>{notice.body.length > 90 ? `${notice.body.slice(0, 90)}…` : notice.body}</p></div><div><time>{notice.publish_at ? new Date(notice.publish_at).toLocaleDateString("ja-JP") : ""}</time><Link className="outline-icon-button" href={`/notices/${notice.id}`} aria-label={`${notice.title}を読む`}><FontAwesomeIcon icon={faChevronRight} /></Link></div></article>) : <div className="member-empty"><h2>現在お知らせはありません</h2></div>}</div></section>
+  </main><SiteFooter /><BottomNav /></div>;
+}

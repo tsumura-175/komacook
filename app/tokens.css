@@ -1,0 +1,83 @@
+/* Hallmark · genre: playful · macrostructure: Workbench (app) / Split Studio (content) · design-system: design.md · designed-as-app · theme: komacook-warm · enrichment: user-provided photography + generated mascot · nav: N1b-app · footer: Ft2 */
+/* Hallmark · pre-emit critique: P5 H5 E4 S5 R4 V5 */
+:root {
+  --color-paper: oklch(0.978 0.018 82);
+  --color-paper-soft: oklch(0.952 0.032 83);
+  --color-surface: oklch(0.995 0.006 82);
+  --color-ink: oklch(0.275 0.035 52);
+  --color-ink-soft: oklch(0.49 0.038 56);
+  --color-border: oklch(0.875 0.036 74);
+  --color-coral: oklch(0.68 0.137 36);
+  --color-coral-dark: oklch(0.56 0.133 34);
+  --color-coral-strong: oklch(0.5 0.13 34);
+  --color-coral-soft: oklch(0.92 0.052 40);
+  --color-leaf: oklch(0.58 0.087 142);
+  --color-leaf-dark: oklch(0.44 0.075 142);
+  --color-leaf-soft: oklch(0.91 0.052 138);
+  --color-brown: oklch(0.51 0.083 58);
+  --color-brown-dark: oklch(0.36 0.063 52);
+  --color-brown-soft: oklch(0.84 0.068 70);
+  --color-gold: oklch(0.78 0.116 80);
+  --color-white: oklch(0.998 0.006 82);
+  --color-accent-ink: oklch(0.998 0.006 82);
+  --color-focus: oklch(0.26 0.12 248);
+  --color-overlay: oklch(0.275 0.035 52 / 0.56);
+  --color-danger: oklch(0.56 0.17 27);
+  --shadow-soft: 0 12px 34px -20px oklch(0.35 0.06 52 / 0.35);
+  --shadow-raised: 0 18px 38px -20px oklch(0.35 0.06 52 / 0.44);
+  --font-display: var(--font-line-seed);
+  --font-body: var(--font-line-seed);
+
+  /* Type scale: LINE Seed JP is an intentional single-family system. */
+  --text-nav: 0.875rem;
+  --text-label: 0.875rem;
+  --text-meta: 0.75rem;
+  --text-caption: 0.6875rem;
+  --text-body: 1rem;
+  --text-card-title: 1.125rem;
+  --text-brand: 1.125rem;
+  --text-section-title: clamp(1.5rem, 3vw, 2.25rem);
+  --text-content-title: clamp(1.5rem, 2.5vw, 2rem);
+  --text-page-title: clamp(2.25rem, 4.5vw, 3.75rem);
+  --text-page-title-mobile: clamp(2rem, 10vw, 2.75rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-bottom-nav: 5.75rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-pill: 999px;
+  --radius-input: var(--radius-sm);
+  --radius-card: var(--radius-md);
+
+  --rule-fine: 1px;
+  --control-height: 2.75rem;
+  --control-height-lg: 3rem;
+  --control-height-touch: 3.25rem;
+  --content-width: 72rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 180ms;
+  --dur-card: 200ms;
+  --dur-long: 420ms;
+  --dur-reduced: 0.01ms;
+
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+}
