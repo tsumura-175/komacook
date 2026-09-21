@@ -12,6 +12,8 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
+    "test:visual": "playwright test tests/e2e/visual-regression.spec.ts",
+    "test:visual:update": "playwright test tests/e2e/visual-regression.spec.ts --update-snapshots",
     "test:db": "supabase test db --local",
     "test:all": "npm run test:db && npm run test:coverage",
     "test:coverage": "vitest run --coverage",
@@ -28,7 +30,11 @@
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
     "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json",
     "deploy": "npm run deploy:vinext",
-    "cf:typegen": "wrangler types"
+    "cf:typegen": "wrangler types",
+    "d1:migrate:local": "wrangler d1 migrations apply komacook-production --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply komacook-production --remote",
+    "d1:seed:local": "wrangler d1 execute komacook-production --local --file cloudflare/d1/seed.sql",
+    "d1:seed:remote": "wrangler d1 execute komacook-production --remote --file cloudflare/d1/seed.sql"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",

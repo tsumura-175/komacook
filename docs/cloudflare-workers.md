@@ -13,6 +13,28 @@
 
 Workers側のServer Component、Route Handler、Server Actionからは`cloudflare:workers`の`env.DB`と`env.IMAGES`を利用する。クライアントへバインディングやR2の資格情報を渡してはならない。
 
+## D1スキーマとマスタデータ
+
+`cloudflare/d1/migrations/0001_initial_schema.sql`は、Supabase Authを認証専用として残し、アプリケーションデータをD1へ置くSQLiteスキーマである。いいね、コレクション、OCRのテーブルは含めない。
+
+初期公開レシピや擬似ユーザーは投入しない。`cloudflare/d1/seed.sql`はカテゴリだけを投入するため、実運用にも安全に適用できる。
+
+ローカルD1の作成・更新:
+
+```powershell
+npm run d1:migrate:local
+npm run d1:seed:local
+```
+
+本番D1へ反映する場合は、Cloudflareへログイン済みの端末で明示的に実行する。WorkerのデプロイだけではD1マイグレーションは適用されない。
+
+```powershell
+npm run d1:migrate:remote
+npm run d1:seed:remote
+```
+
+本番実行前に必ずSQL差分を確認すること。以後のマイグレーションは破壊的変更を避け、追加ファイルとして管理する。
+
 ## Cloudflareダッシュボード
 
 Workers & Pagesの対象Workerで、次のように設定する。

@@ -1,12 +1,13 @@
 "use client";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDown, faArrowUp, faCheck, faChevronRight, faClockRotateLeft, faFloppyDisk, faPlus, faRotate, faTrashCan, faTriangleExclamation, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDown, faArrowUp, faCheck, faChevronRight, faClockRotateLeft, faFloppyDisk, faPlus, faRotate, faTrashCan, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { BottomNav, SiteFooter, SiteHeader } from "../../components/site-shell";
 import { RecipeDeleteDialog } from "../../components/recipe-delete-dialog";
+import { Dialog } from "../../components/dialog";
 import { RecipeImageField, type RecipeImageFieldHandle } from "../../components/recipe-image-field";
 import { RecipeStepImageField, type RecipeStepImageFieldHandle } from "../../components/recipe-step-image-field";
 import { moveRecipeRow, RECIPE_UNIT_SUGGESTIONS, savedTimeLabel } from "../../../lib/recipe-editor";
@@ -161,13 +162,6 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
     void loadFormData();
     return () => { cancelled = true; };
   }, [mode, params.id, router]);
-
-  useEffect(() => {
-    if (!preview) return;
-    function closeWithEscape(event: KeyboardEvent) { if (event.key === "Escape" && !saving) setPreview(null); }
-    document.addEventListener("keydown", closeWithEscape);
-    return () => document.removeEventListener("keydown", closeWithEscape);
-  }, [preview, saving]);
 
   function updateIngredient(id: number, key: keyof Omit<IngredientRow, "id">, value: string) {
     setIngredients((rows) => rows.map((row) => row.id === id ? { ...row, [key]: value } : row));
@@ -355,9 +349,8 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
         </aside>
       </form>}
     </main>
-    {preview ? <div className="modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget && !saving) setPreview(null); }}><section className="report-dialog recipe-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="recipe-confirm-title">
-      <button className="modal-close" type="button" aria-label="確認画面を閉じる" disabled={saving} onClick={() => setPreview(null)}><FontAwesomeIcon icon={faXmark} /></button>
-      {registered ? <div className="recipe-register-complete"><span><FontAwesomeIcon icon={faCheck} /></span><h2 id="recipe-confirm-title">レシピを保存しました</h2><p>マイレシピから、いつでも分量や手順を編集できます。</p><Link className="primary-action full-action" href="/mypage/recipes">マイレシピを見る</Link></div> : <>
+    <Dialog open={Boolean(preview)} titleId="recipe-confirm-title" className="recipe-confirm-dialog" pending={saving} onClose={() => setPreview(null)} closeLabel="確認画面を閉じる">
+      {preview ? (registered ? <div className="recipe-register-complete"><span><FontAwesomeIcon icon={faCheck} /></span><h2 id="recipe-confirm-title">レシピを保存しました</h2><p>マイレシピから、いつでも分量や手順を編集できます。</p><Link className="primary-action full-action" href="/mypage/recipes">マイレシピを見る</Link></div> : <>
         <h2 id="recipe-confirm-title">保存内容を確認</h2><p>材料の順序と公開範囲を含め、保存前に最終確認してください。</p>
         <dl className="recipe-confirm-summary"><div><dt>レシピ名</dt><dd>{preview.title}</dd></div><div><dt>カテゴリ</dt><dd>{preview.categoryName}</dd></div><div><dt>基準人数</dt><dd>{preview.servings}人分</dd></div><div><dt>公開範囲</dt><dd>{preview.visibility === "public" ? "公開" : "非公開"}</dd></div>{preview.time ? <div><dt>調理時間</dt><dd>{preview.time}分</dd></div> : null}{preview.calories ? <div><dt>概算カロリー</dt><dd>{preview.calories}kcal／1人前</dd></div> : null}</dl>
         {preview.description ? <div className="recipe-confirm-block"><h3>説明・メモ</h3><p>{preview.description}</p></div> : null}
@@ -365,12 +358,12 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
         <div className="recipe-confirm-block"><h3>作り方</h3><ol>{preview.steps.map((step, index) => <li key={`${step.instruction}-${index}`}>{step.instruction}</li>)}</ol></div>
         {preview.tags ? <div className="recipe-confirm-block"><h3>タグ</h3><p>{preview.tags}</p></div> : null}{preview.allergy ? <div className="recipe-confirm-block"><h3>アレルギー・注意事項</h3><p>{preview.allergy}</p></div> : null}
         <div className="report-actions"><button className="outline-action" type="button" disabled={saving} onClick={() => setPreview(null)}>入力画面に戻る</button><button className="primary-action" type="button" disabled={saving} onClick={() => void persist("publish", preview)}>{saving ? "保存中…" : mode === "edit" ? "変更を保存" : "この内容で登録"}</button></div>
-      </>}
-    </section></div> : null}
-    {conflictOpen ? <div className="modal-backdrop"><section className="report-dialog recipe-conflict-dialog" role="alertdialog" aria-modal="true" aria-labelledby="recipe-conflict-title">
+      </>) : null}
+    </Dialog>
+    <Dialog open={conflictOpen} titleId="recipe-conflict-title" className="recipe-conflict-dialog" role="alertdialog">
       <span className="recipe-conflict-icon"><FontAwesomeIcon icon={faClockRotateLeft} /></span><h2 id="recipe-conflict-title">別の画面で更新されています</h2><p>この画面の入力内容は消していません。最新の内容を読み込むと、この画面の未保存内容は破棄されます。</p>
       <div className="report-actions"><button className="outline-action" type="button" onClick={() => setConflictOpen(false)}>入力内容を確認する</button><button className="primary-action" type="button" onClick={() => window.location.reload()}><FontAwesomeIcon icon={faRotate} />最新内容を読み込む</button></div>
-    </section></div> : null}
+    </Dialog>
     <RecipeDeleteDialog open={trashConfirmOpen} title="このレシピをゴミ箱へ移しますか？" description="30日間はゴミ箱から元に戻せます。期限を過ぎると完成写真を含めて自動的に完全削除されます。" confirmLabel="ゴミ箱へ移す" pending={saving} onClose={() => setTrashConfirmOpen(false)} onConfirm={() => { setSaving(true); void moveRecipeToTrash(savedId).then((result) => { if (result.ok) router.push("/mypage/recipes?tab=trash"); else { setTrashConfirmOpen(false); setSavePhase("error"); setStatus(result.error ?? "ゴミ箱へ移せませんでした"); setSaving(false); } }); }} />
     <SiteFooter /><BottomNav />
   </div>;

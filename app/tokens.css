@@ -25,10 +25,10 @@
   --color-danger: oklch(0.56 0.17 27);
   --shadow-soft: 0 12px 34px -20px oklch(0.35 0.06 52 / 0.35);
   --shadow-raised: 0 18px 38px -20px oklch(0.35 0.06 52 / 0.44);
-  --font-display: var(--font-line-seed);
-  --font-body: var(--font-line-seed);
+  --font-display: var(--font-m-plus-1p);
+  --font-body: var(--font-m-plus-1p);
 
-  /* Type scale: LINE Seed JP is an intentional single-family system. */
+  /* M PLUS 1p is used consistently for both headings and body text. */
   --text-nav: 0.875rem;
   --text-label: 0.875rem;
   --text-meta: 0.75rem;

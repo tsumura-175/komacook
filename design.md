@@ -33,9 +33,9 @@ Playful。親しみやすいが子ども向けには寄せず、料理中にも�
 
 ## Typography
 
-- Display: LINE Seed JP, weight 700–800, normal style
-- Body: LINE Seed JP, weight 400
-- UI labels: LINE Seed JP, weight 700–800
+- Display: M PLUS 1p, weight 700–800, normal style
+- Body: M PLUS 1p, weight 400–500
+- UI labels: M PLUS 1p, weight 700–800
 - Single-family use is intentional。日本語の読みやすさとLINEに親和性のある親しみやすさを優先する。
 - 本文は16pxを基準とし、補足情報以外を14px未満にしない。
 - 文字サイズは必ず `--text-*` トークンを使用する。
@@ -65,7 +65,7 @@ Playful。親しみやすいが子ども向けには寄せず、料理中にも�
 
 ## What pages MUST share
 
-- LINE Seed JPと文字サイズトークン
+- M PLUS 1pと文字サイズトークン
 - クリーム・コーラル・葉色の配色
 - 最大72remのコンテンツ幅と16pxのスマホ左右余白
 - ヘッダー、フッター、スマホ下部ナビ
@@ -111,8 +111,8 @@ Playful。親しみやすいが子ども向けには寄せず、料理中にも�
   --color-surface: oklch(0.995 0.006 82);
   --color-ink: oklch(0.275 0.035 52);
   --color-accent: oklch(0.56 0.133 34);
-  --font-display: var(--font-line-seed);
-  --font-body: var(--font-line-seed);
+  --font-display: var(--font-m-plus-1p);
+  --font-body: var(--font-m-plus-1p);
   --spacing-sm: 1rem;
   --spacing-md: 1.5rem;
   --spacing-lg: 2rem;
@@ -137,8 +137,8 @@ Playful。親しみやすいが子ども向けには寄せず、料理中にも�
     "focus": { "$value": "oklch(0.26 0.12 248)", "$type": "color" }
   },
   "font": {
-    "display": { "$value": "LINE Seed JP", "$type": "fontFamily" },
-    "body": { "$value": "LINE Seed JP", "$type": "fontFamily" }
+    "display": { "$value": "M PLUS 1p", "$type": "fontFamily" },
+    "body": { "$value": "M PLUS 1p", "$type": "fontFamily" }
   },
   "size": {
     "label": { "$value": "0.875rem", "$type": "dimension" },

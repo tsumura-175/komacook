@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
-import { LINE_Seed_JP } from "next/font/google";
+import { config } from "@fortawesome/fontawesome-svg-core";
+import "@fortawesome/fontawesome-svg-core/styles.css";
+import { M_PLUS_1p } from "next/font/google";
 import "./globals.css";
 
-const lineSeed = LINE_Seed_JP({
-  weight: ["400", "700", "800"],
+// Font AwesomeのスタイルをサーバーHTMLと同時に読み込む。クライアント側の
+// 自動注入を止めることで、初回描画時にSVGアイコンだけが一瞬未整形になるのを防ぐ。
+config.autoAddCss = false;
+
+const mPlus1p = M_PLUS_1p({
+  weight: ["400", "500", "700", "800"],
   display: "swap",
-  variable: "--font-line-seed",
-  preload: false,
+  variable: "--font-m-plus-1p",
   fallback: ["Yu Gothic", "Hiragino Kaku Gothic ProN", "sans-serif"],
 });
 
@@ -22,7 +27,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ja" className={lineSeed.variable}>
+    <html lang="ja" className={mPlus1p.variable} data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );

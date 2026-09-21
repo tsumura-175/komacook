@@ -69,6 +69,28 @@ npm run test:all
 
 認証・RLS・画像・削除処理のテスト構成と個別コマンドは [testing.md](./testing.md) を参照してください。統合テストはローカルURL以外では停止します。
 
+### 視覚回帰テスト
+
+レイアウト変更前後には、Chromium・Firefox・WebKitで画像比較を実行します。Chromiumでは320px、375px、390px、768px、1024px、1280px、1440pxを確認し、FirefoxとWebKit（iPhone Safari相当）でも同じ主要状態を比較します。
+
+初回だけ、3種類のブラウザ実行環境を取得します。
+
+```powershell
+npx playwright install chromium firefox webkit
+```
+
+```powershell
+npm run test:visual
+```
+
+初回または意図したデザイン変更後だけ、レビューで確認したうえで基準画像を更新します。
+
+```powershell
+npm run test:visual:update
+```
+
+視覚テストは、データ0件、読み込み中、通信失敗、長い文字列、完成画像の有無、入力エラー、モーダル、キーボードフォーカス、200%相当の表示倍率を含みます。`tests/e2e/visual-regression.spec.ts-snapshots`配下の基準画像を理由なく更新しないでください。
+
 ## 環境変数
 
 ローカル接続値は `.env.local` に保存します。このファイルはGit管理対象外です。本番環境ではSupabase CloudのURLとPublishable Keyへ差し替えます。
