@@ -37,8 +37,19 @@ jobs:
             echo "NOTIFICATION_FROM_EMAIL=no-reply@komacook.local"
           } > .env.local
       - run: npm run test:all
+      - run: npx supabase db lint --local
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failures
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore

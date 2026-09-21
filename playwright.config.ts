@@ -14,7 +14,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   expect: { timeout: 15_000, toHaveScreenshot: { animations: "disabled", maxDiffPixelRatio: 0.01 } },
-  use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure", actionTimeout: 15_000 },
+  use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure", video: "retain-on-failure", actionTimeout: 15_000 },
   webServer: process.env.E2E_BASE_URL ? undefined : {
     command: "npm run dev -- -p 3010",
     url: baseURL,

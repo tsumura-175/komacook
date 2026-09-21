@@ -11,6 +11,7 @@ import { Dialog } from "../../components/dialog";
 import { RecipeImageField, type RecipeImageFieldHandle } from "../../components/recipe-image-field";
 import { RecipeStepImageField, type RecipeStepImageFieldHandle } from "../../components/recipe-step-image-field";
 import { moveRecipeRow, RECIPE_UNIT_SUGGESTIONS, savedTimeLabel } from "../../../lib/recipe-editor";
+import { localPublishedDraftKey, readLocalPublishedDraft, type LocalPublishedDraft } from "../../../lib/recipe-editor-draft";
 import { createClient } from "../../../lib/supabase/client";
 import { moveRecipeToTrash, saveRecipe, type RecipeInput } from "../actions";
 
@@ -19,7 +20,6 @@ type StepRow = { id: number; text: string; imagePath: string | null; imageUrl: s
 type ChangeState = { revision: number; immediate: boolean };
 type SavePhase = "idle" | "saving" | "saved" | "error" | "conflict";
 type RecipePreview = RecipeInput & { categoryName: string };
-type LocalPublishedDraft = { version: 1; savedAt: string; input: RecipeInput };
 
 type LoadedRecipe = Record<string, unknown> & {
   id: string;
@@ -36,21 +36,6 @@ const initialIngredients: IngredientRow[] = [
 ];
 const initialSteps: StepRow[] = [{ id: 1, text: "", imagePath: null, imageUrl: null }, { id: 2, text: "", imagePath: null, imageUrl: null }];
 
-function localDraftKey(recipeId: string) {
-  return `komacook:published-recipe-draft:${recipeId}`;
-}
-
-function readLocalPublishedDraft(recipe: LoadedRecipe): LocalPublishedDraft | null {
-  try {
-    const raw = window.localStorage.getItem(localDraftKey(recipe.id));
-    if (!raw) return null;
-    const draft = JSON.parse(raw) as Partial<LocalPublishedDraft>;
-    if (draft.version !== 1 || !draft.input || draft.input.id !== recipe.id || draft.input.lockVersion !== Number(recipe.lock_version)) return null;
-    return draft as LocalPublishedDraft;
-  } catch {
-    return null;
-  }
-}
 
 export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" }) {
   const params = useParams<{ id?: string }>();
@@ -199,7 +184,7 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
       if (intent === "autosave" && recipeInput.id && recipeInput.currentStatus === "published") {
         const savedAt = new Date().toISOString();
         const localDraft: LocalPublishedDraft = { version: 1, savedAt, input: recipeInput };
-        window.localStorage.setItem(localDraftKey(recipeInput.id), JSON.stringify(localDraft));
+        window.localStorage.setItem(localPublishedDraftKey(recipeInput.id), JSON.stringify(localDraft));
         if (revision === latestRevisionRef.current && !imageDirtyRef.current && !stepImageDirtyRef.current) dirtyRef.current = false;
         setSavePhase(imageDirtyRef.current || stepImageDirtyRef.current ? "idle" : "saved");
         setStatus(imageDirtyRef.current || stepImageDirtyRef.current
@@ -225,7 +210,7 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
       stepImageDirtyRef.current = false;
       if (intent === "draft" || (!recipeInput.id && intent === "autosave")) currentStatusRef.current = "draft";
       if (intent === "publish") currentStatusRef.current = "published";
-      if (intent === "publish" && result.id) window.localStorage.removeItem(localDraftKey(result.id));
+      if (intent === "publish" && result.id) window.localStorage.removeItem(localPublishedDraftKey(result.id));
       if (revision === latestRevisionRef.current) dirtyRef.current = false;
       setSavePhase("saved");
       setStatus(`保存済み ${savedTimeLabel(result.savedAt ?? new Date())}`);

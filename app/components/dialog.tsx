@@ -43,11 +43,15 @@ export function Dialog({ open, titleId, descriptionId, children, className = "",
   const lastFocusedRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const pendingRef = useRef(pending);
-  onCloseRef.current = onClose;
-  pendingRef.current = pending;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    pendingRef.current = pending;
+  }, [onClose, pending]);
 
   useEffect(() => {
     if (!open) return;
+    const explicitReturnTarget = triggerRef?.current ?? null;
     lastFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     lockBodyScroll();
     const dialog = dialogRef.current;
@@ -81,10 +85,10 @@ export function Dialog({ open, titleId, descriptionId, children, className = "",
       window.clearTimeout(timer);
       document.removeEventListener("keydown", onKeyDown);
       unlockBodyScroll();
-      const returnTarget = triggerRef?.current ?? lastFocusedRef.current;
+      const returnTarget = explicitReturnTarget ?? lastFocusedRef.current;
       window.setTimeout(() => { if (returnTarget?.isConnected) returnTarget.focus(); }, 0);
     };
-  }, [open]);
+  }, [open, triggerRef]);
 
   if (!open) return null;
   const canClose = Boolean(onClose) && !pending;

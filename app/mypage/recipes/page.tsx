@@ -2,27 +2,16 @@
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBookmark as faBookmarkRegular } from "@fortawesome/free-regular-svg-icons";
-import {
-  faBookmark,
-  faClock,
-  faCopy,
-  faFloppyDisk,
-  faGlobe,
-  faLock,
-  faMagnifyingGlass,
-  faPenToSquare,
-  faPlus,
-  faRotateLeft,
-  faTrashCan,
-} from "@fortawesome/free-solid-svg-icons";
+import { faMagnifyingGlass, faPlus, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { BottomNav, SiteFooter, SiteHeader } from "../../components/site-shell";
 import { RecipeDeleteDialog } from "../../components/recipe-delete-dialog";
+import { MyRecipeCard } from "../../components/my-recipe-card";
 import { filterAndSortMyRecipes, type MyRecipeSort, type MyRecipeTab } from "../../../lib/my-recipes";
+import type { MyRecipe } from "../../../lib/my-recipe-types";
 import { createClient } from "../../../lib/supabase/client";
 import { permanentlyDeleteRecipe, restoreRecipe, toggleFavorite } from "../../recipes/actions";
-import { RecipeThumbnail } from "../../components/recipe-thumbnail";
 
 type TabId = MyRecipeTab;
 
@@ -32,20 +21,6 @@ const tabs: { id: TabId; label: string }[] = [
   { id: "drafts", label: "下書き" },
   { id: "trash", label: "ゴミ箱" },
 ];
-
-type MyRecipe = {
-  id: string;
-  name: string;
-  category: string;
-  tags: string[];
-  time: number;
-  visibility: string;
-  source: string;
-  tab: TabId;
-  updatedAt: string;
-  updatedLabel: string;
-  imageUrl: string | null;
-};
 
 export default function MyRecipesPage() {
   const [activeTab, setActiveTab] = useState<TabId>("mine");
@@ -232,24 +207,7 @@ export default function MyRecipesPage() {
 
           {loading ? <div className="search-page-loading" aria-live="polite">マイレシピを読み込んでいます</div> : filtered.length ? (
             <div className="my-recipe-grid">
-              {filtered.map((recipe) => {
-                const isSaved = savedRecipeIds.has(recipe.id);
-                const isSavePending = pendingSaveIds.has(recipe.id);
-                const sourceLabel = recipe.tab === "favorites" && !isSaved ? "保存解除済み" : recipe.source;
-                return <article className={`my-recipe-card ${recipe.tab === "favorites" && !isSaved ? "is-save-removed" : ""}`} key={recipe.id}>
-                <div className="my-recipe-image"><RecipeThumbnail imageUrl={recipe.imageUrl} title={recipe.name} priority={recipe.id === firstVisibleImageId} sizes="(max-width: 600px) 100vw, (max-width: 960px) 50vw, 33vw" /></div>
-                <div className="my-recipe-body">
-                  <div className="my-recipe-badges"><span>{recipe.source === "手入力" ? <FontAwesomeIcon icon={faPenToSquare} /> : recipe.source === "コピー" ? <FontAwesomeIcon icon={faCopy} /> : recipe.source === "保存済み" ? <FontAwesomeIcon icon={isSaved ? faBookmark : faBookmarkRegular} /> : recipe.source === "削除済み" ? <FontAwesomeIcon icon={faTrashCan} /> : <FontAwesomeIcon icon={faFloppyDisk} />}{sourceLabel}</span><span>{recipe.visibility === "公開" ? <FontAwesomeIcon icon={faGlobe} /> : <FontAwesomeIcon icon={faLock} />}{recipe.visibility}</span></div>
-                  <h3>{recipe.name}</h3>
-                  <div className="recipe-tags">{recipe.tags.map((tag) => <span className="recipe-tag" key={tag}>{tag}</span>)}</div>
-                  <div className="my-recipe-meta"><span><FontAwesomeIcon icon={faClock} />{recipe.time}分</span><span>{activeTab === "trash" ? `完全削除まで：${recipe.updatedLabel}` : `更新：${recipe.updatedLabel}`}</span></div>
-                  <div className="my-recipe-actions">
-                    {activeTab === "trash" ? <><button className="secondary-button" type="button" disabled={pending} onClick={() => restore(recipe.id)}><FontAwesomeIcon icon={faRotateLeft} />元に戻す</button><button className="outline-icon-button" type="button" disabled={pending} aria-label={`${recipe.name}を完全に削除`} onClick={() => setDeleteTarget(recipe)}><FontAwesomeIcon icon={faTrashCan} /></button></> : <><Link className="secondary-button" href={activeTab === "drafts" ? `/recipes/${recipe.id}/edit` : `/recipes/${recipe.id}`}>{activeTab === "drafts" ? "編集を続ける" : "レシピを見る"}</Link>{activeTab === "favorites" ? <button className={`save-button ${isSaved ? "is-saved" : ""}`} type="button" aria-label={isSaved ? `${recipe.name}を保存から外す` : `${recipe.name}をもう一度保存する`} aria-pressed={isSaved} disabled={isSavePending} onClick={() => toggleSavedRecipe(recipe.id)}><FontAwesomeIcon icon={isSaved ? faBookmark : faBookmarkRegular} /></button> : <Link className="outline-icon-button" href={`/recipes/${recipe.id}/edit`} aria-label={`${recipe.name}を編集`}><FontAwesomeIcon icon={faPenToSquare} /></Link>}</>}
-                  </div>
-                  {recipe.tab === "favorites" && !isSaved ? <p className="save-removal-note" role="status">画面を移動すると、この一覧から外れます。</p> : null}
-                </div>
-              </article>;
-              })}
+              {filtered.map((recipe) => <MyRecipeCard key={recipe.id} recipe={recipe} activeTab={activeTab} isSaved={savedRecipeIds.has(recipe.id)} isSavePending={pendingSaveIds.has(recipe.id)} priority={recipe.id === firstVisibleImageId} pending={pending} onRestore={restore} onDelete={setDeleteTarget} onToggleSaved={toggleSavedRecipe} />)}
             </div>
           ) : (
             <div className="member-empty member-empty-large"><FontAwesomeIcon icon={activeTab === "trash" ? faTrashCan : faBookmarkRegular} /><h2>{query || category ? "条件に合うレシピがありません" : `${tabTitle}はありません`}</h2><p>{activeTab === "trash" ? "削除したレシピは30日間ここに保管されます。" : "検索条件を変えるか、レシピを追加してみてください。"}</p>{query || category ? <button type="button" onClick={() => { setQuery(""); setCategory(""); }}>条件をクリア</button> : null}</div>
