@@ -54,7 +54,16 @@ export async function signUpWithPassword(_: AuthState, formData: FormData): Prom
   if (!hasSupabaseConfig()) return { error: unavailable };
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({ ...parsed.data, options: { emailRedirectTo: getAuthCallbackUrl() } });
-  if (error) return { error: error.message.includes("already registered") ? "このメールアドレスは登録済みです。" : "会員登録に失敗しました。" };
+  if (error) {
+    // Do not log the email address or password. The provider error code is
+    // enough to diagnose SMTP, rate-limit, and configuration failures.
+    console.error("Supabase sign-up failed", { code: error.code, name: error.name, status: error.status });
+    const message = error.message.toLowerCase();
+    if (message.includes("already registered")) return { error: "このメールアドレスは登録済みです。" };
+    if (message.includes("email address not authorized")) return { error: "確認メールを送信できませんでした。時間をおいて再試行するか、運営へお問い合わせください。" };
+    if (error.status === 429 || message.includes("rate limit")) return { error: "確認メールの送信回数が上限に達しました。しばらく時間をおいてからお試しください。" };
+    return { error: "会員登録に失敗しました。時間をおいて再試行してください。" };
+  }
   if (!data.session) return { confirmationRequired: true, requestId: crypto.randomUUID() };
   redirect("/onboarding");
 }

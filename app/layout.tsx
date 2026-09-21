@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { config } from "@fortawesome/fontawesome-svg-core";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 import { M_PLUS_1p } from "next/font/google";
+import { getSiteUrl } from "../lib/site-url";
 import "./globals.css";
 
 // Font AwesomeのスタイルをサーバーHTMLと同時に読み込む。クライアント側の
@@ -19,8 +20,10 @@ const mPlus1p = M_PLUS_1p({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: "こまクック｜いつもの味を、いつでも",
   description: "毎日のレシピを保存して、家族の人数に合わせて使える料理ノート",
+  alternates: { canonical: "/" },
   icons: {
     icon: [{ url: "/brand/komacook-poodle-chef.png", type: "image/png" }],
     shortcut: "/brand/komacook-poodle-chef.png",

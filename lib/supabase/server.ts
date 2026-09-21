@@ -8,6 +8,12 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(url, key, {
+    auth: {
+      experimental: {
+        // Keep independently started PKCE flows from overwriting each other.
+        appendPkceFlowIdToRedirects: true,
+      },
+    },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll(cookiesToSet) {
@@ -20,4 +26,3 @@ export async function createClient() {
     },
   });
 }
-
