@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { normalizeAvatarImage } from "../../lib/avatar-image";
 import { getAuthCallbackUrl } from "../../lib/site-url";
+import { createAdminClient } from "../../lib/supabase/admin";
 import { createClient } from "../../lib/supabase/server";
 
 const schema = z.object({
@@ -18,6 +19,43 @@ const schema = z.object({
 });
 
 export type OnboardingResult = { ok: true; confirmationRequired: boolean } | { ok: false; error: string };
+
+type OnboardingProfile = {
+  account_status: "active" | "suspended" | "deletion_pending";
+  avatar_path: string | null;
+};
+
+/**
+ * Auth の新規ユーザートリガーが何らかの理由でプロフィールを作れなかった場合でも、
+ * 初回設定だけは安全に再開できるようにする。呼び出し元の認証済み user_id 以外は
+ * 作成できず、既存レコードは更新しない。
+ */
+async function getOrProvisionOnboardingProfile(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  user: { id: string; user_metadata: Record<string, unknown> },
+): Promise<OnboardingProfile | null> {
+  const selectProfile = () => supabase.from("profiles")
+    .select("account_status, avatar_path")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const initial = await selectProfile();
+  if (initial.error) throw initial.error;
+  if (initial.data) return initial.data;
+
+  const metadataName = String(user.user_metadata.full_name ?? user.user_metadata.name ?? "").trim();
+  const { error: provisionError } = await createAdminClient()
+    .from("profiles")
+    .upsert(
+      { user_id: user.id, display_name: metadataName.slice(0, 30) || "こまクックユーザー" },
+      { onConflict: "user_id", ignoreDuplicates: true },
+    );
+  if (provisionError) throw provisionError;
+
+  const provisioned = await selectProfile();
+  if (provisioned.error) throw provisioned.error;
+  return provisioned.data;
+}
 
 export async function completeOnboarding(formData: FormData): Promise<OnboardingResult> {
   const parsed = schema.safeParse({
@@ -38,12 +76,20 @@ export async function completeOnboarding(formData: FormData): Promise<Onboarding
   const user = authData.user;
   if (!user) return { ok: false, error: "ログインが必要です。" };
 
-  const { data: currentProfile } = await supabase.from("profiles")
-    .select("account_status, avatar_path")
-    .eq("user_id", user.id)
-    .single();
-  if (!currentProfile || currentProfile.account_status !== "active") {
-    return { ok: false, error: "このアカウントでは初回設定を変更できません。" };
+  let currentProfile: OnboardingProfile | null;
+  try {
+    currentProfile = await getOrProvisionOnboardingProfile(supabase, user);
+  } catch {
+    return { ok: false, error: "アカウント情報を初期化できませんでした。時間をおいて再度お試しください。" };
+  }
+  if (!currentProfile) {
+    return { ok: false, error: "アカウント情報を初期化できませんでした。時間をおいて再度お試しください。" };
+  }
+  if (currentProfile.account_status === "suspended") {
+    return { ok: false, error: "このアカウントは現在利用停止中です。お問い合わせから運営へご連絡ください。" };
+  }
+  if (currentProfile.account_status === "deletion_pending") {
+    return { ok: false, error: "このアカウントは退会処理中です。" };
   }
 
   const value = parsed.data;
