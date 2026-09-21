@@ -295,15 +295,18 @@ export async function getCategories() {
 
 export async function getSearchOptions() {
   const supabase = await createClient();
-  const [categories, tagsResult, ingredientsResult] = await Promise.all([
+  const [categoriesResult, tagsResult, ingredientsResult] = await Promise.allSettled([
     getCategories(),
     supabase.from("tags").select("name").eq("is_active", true).order("name"),
     supabase.from("recipe_ingredients").select("name").limit(300),
   ]);
-  const ingredients = [...new Set((ingredientsResult.data ?? []).map((item) => item.name.trim()).filter(Boolean))]
+  const categories = categoriesResult.status === "fulfilled" ? categoriesResult.value : [];
+  const tags = tagsResult.status === "fulfilled" ? tagsResult.value.data ?? [] : [];
+  const ingredientRows = ingredientsResult.status === "fulfilled" ? ingredientsResult.value.data ?? [] : [];
+  const ingredients = [...new Set(ingredientRows.map((item) => item.name.trim()).filter(Boolean))]
     .toSorted((a, b) => a.localeCompare(b, "ja"))
     .slice(0, 30);
-  return { categories, tags: (tagsResult.data ?? []).map((tag) => tag.name), ingredients };
+  return { categories, tags: tags.map((tag) => tag.name), ingredients };
 }
 
 export async function getHomeNotices(limit = 3) {

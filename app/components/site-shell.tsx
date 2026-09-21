@@ -35,10 +35,20 @@ export function BrandMark() {
   );
 }
 
+type Viewer = {
+  signedIn: boolean;
+  displayName: string;
+  hasUnreadNotification: boolean;
+  avatarKind?: string;
+  presetKey?: string | null;
+  color?: string | null;
+  avatarUrl?: string | null;
+};
+
 export function SiteHeader() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [viewer, setViewer] = useState<{ signedIn: boolean; displayName: string; hasUnreadNotification: boolean; avatarKind?: string; presetKey?: string | null; color?: string | null; avatarUrl?: string | null }>({ signedIn: false, displayName: "", hasUnreadNotification: false });
+  const [viewer, setViewer] = useState<Viewer | null>(null);
   const menuRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const isHome = pathname === "/";
@@ -103,11 +113,11 @@ export function SiteHeader() {
         <Link className={`nav-link ${isRecipes ? "is-current" : ""}`} href="/recipes" aria-current={isRecipes ? "page" : undefined}><FontAwesomeIcon icon={faMagnifyingGlass} fixedWidth />レシピを探す</Link>
       </nav>
       <div className="header-actions">
-        <Link className="icon-button notification-button" href="/notices" aria-label={viewer.hasUnreadNotification ? "未読のお知らせがあります" : "お知らせ"}><FontAwesomeIcon icon={faBell} />{viewer.hasUnreadNotification ? <span className="notification-dot" aria-hidden="true" /> : null}</Link>
-        <Link className="profile-button" href={viewer.signedIn ? "/mypage" : "/login"} aria-label={viewer.signedIn ? "マイページを開く" : "ログインする"}>
+        <Link className="icon-button notification-button" href="/notices" aria-label={viewer?.hasUnreadNotification ? "未読のお知らせがあります" : "お知らせ"}><FontAwesomeIcon icon={faBell} />{viewer?.hasUnreadNotification ? <span className="notification-dot" aria-hidden="true" /> : null}</Link>
+        {viewer ? <Link className="profile-button" href={viewer.signedIn ? "/mypage" : "/login"} aria-label={viewer.signedIn ? "マイページを開く" : "ログインする"}>
           {viewer.signedIn ? <ProfileAvatar avatarKind={viewer.avatarKind} presetKey={viewer.presetKey} color={viewer.color} imageUrl={viewer.avatarUrl} className="profile-avatar" /> : <span className="profile-avatar"><FontAwesomeIcon icon={faRightToBracket} /></span>}
           <span>{viewer.signedIn ? viewer.displayName || "マイページ" : "ログイン"}</span>
-        </Link>
+        </Link> : <span className="profile-button profile-button-loading" aria-label="ログイン状態を確認中" aria-busy="true"><span className="profile-avatar" /></span>}
         <button ref={menuButtonRef} className="menu-button" type="button" aria-expanded={menuOpen} aria-controls="mobile-menu" aria-label={menuOpen ? "メニューを閉じる" : "メニューを開く"} onClick={() => setMenuOpen((current) => !current)}><FontAwesomeIcon icon={faBars} /></button>
       </div>
       {menuOpen ? (
@@ -116,7 +126,7 @@ export function SiteHeader() {
           <Link href="/mypage/recipes" onClick={() => setMenuOpen(false)}>マイレシピ</Link>
           <Link href="/recipes" onClick={() => setMenuOpen(false)}>レシピを探す</Link>
           <Link href="/notices" onClick={() => setMenuOpen(false)}>お知らせ</Link>
-          {viewer.signedIn ? <a href="/auth/signout" onClick={() => setMenuOpen(false)}><FontAwesomeIcon icon={faRightFromBracket} /> ログアウト</a> : <Link href="/login" onClick={() => setMenuOpen(false)}><FontAwesomeIcon icon={faRightToBracket} /> ログイン</Link>}
+          {viewer?.signedIn ? <a href="/auth/signout" onClick={() => setMenuOpen(false)}><FontAwesomeIcon icon={faRightFromBracket} /> ログアウト</a> : viewer ? <Link href="/login" onClick={() => setMenuOpen(false)}><FontAwesomeIcon icon={faRightToBracket} /> ログイン</Link> : null}
         </nav>
       ) : null}
     </header>
