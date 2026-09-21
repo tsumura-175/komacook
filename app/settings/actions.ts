@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { normalizeAvatarImage } from "../../lib/avatar-image";
-import { familySettingsSchema, GOOGLE_UNLINK_CONFIRMATION, SIGN_OUT_CONFIRMATION, valuesMatch } from "../../lib/account-settings";
+import { familySettingsSchema, GOOGLE_UNLINK_CONFIRMATION, valuesMatch } from "../../lib/account-settings";
 import { validateNewPassword } from "../../lib/password-policy";
 import { getAuthCallbackUrl } from "../../lib/site-url";
 import { createClient } from "../../lib/supabase/server";
@@ -80,8 +80,7 @@ export async function updatePassword(formData: FormData) {
   redirect(error ? "/settings/account?error=password" : "/settings/account?message=password-saved");
 }
 
-export async function signOutAll(formData: FormData) {
-  if (formData.get("confirmation") !== SIGN_OUT_CONFIRMATION) redirect("/settings/account?error=signout-confirmation");
+export async function signOutAll() {
   const supabase = await createClient();
   await supabase.auth.signOut({ scope: "global" });
   redirect("/login");

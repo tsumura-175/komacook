@@ -50,7 +50,6 @@
 .auth-document section { margin-top: var(--space-8); }
 .auth-document h2 { margin: 0 0 var(--space-3); font-size: var(--text-card-title); }
 .auth-document p, .auth-document li { color: var(--color-ink-soft); line-height: 1.8; }
-.legal-draft-note { margin-top: var(--space-10); padding: var(--space-4); border: var(--rule-fine) solid var(--color-border); border-radius: var(--radius-input); background: var(--color-paper); }
 .onboarding-page { min-height: 100svh; padding: var(--space-8) var(--space-4); background: var(--color-paper); }
 .onboarding-card { width: min(100%, 44rem); margin: 0 auto; padding: var(--space-8); border: var(--rule-fine) solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-soft); }
 .onboarding-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-6) 0; }

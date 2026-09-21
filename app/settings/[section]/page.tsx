@@ -3,7 +3,7 @@ import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import { faCheck, faEnvelope, faKey, faLink, faRightFromBracket, faShieldHalved, faTrashCan, faUser } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { GOOGLE_UNLINK_CONFIRMATION, SIGN_OUT_CONFIRMATION } from "../../../lib/account-settings";
+import { GOOGLE_UNLINK_CONFIRMATION } from "../../../lib/account-settings";
 import { createClient } from "../../../lib/supabase/server";
 import { BottomNav, SiteFooter, SiteHeader } from "../../components/site-shell";
 import { PasswordField } from "../../login/password-field";
@@ -38,7 +38,6 @@ const errors: Record<string, string> = {
   password: "パスワードを変更できませんでした。",
   "password-confirmation": "新しいパスワードと確認入力が一致していません。",
   "password-policy": "新しいパスワードが安全性の条件を満たしていません。",
-  "signout-confirmation": "全端末ログアウトの確認欄を選択してください。",
   "google-link": "Google連携を開始できませんでした。連携設定またはGoogle側の状態を確認してください。",
   "google-confirmation": `確認欄に「${GOOGLE_UNLINK_CONFIRMATION}」と入力してください。`,
   "google-not-linked": "Googleアカウントは連携されていません。",
@@ -71,7 +70,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     <main className="member-page-main">
       <header className="member-page-heading"><div><h1>設定</h1><p>プロフィールとアカウントの安全設定を管理します。</p></div></header>
       <div className="management-layout">
-        <nav className="management-panel settings-nav" aria-label="設定メニュー">{sections.map((item) => <Link key={item.id} className={section === item.id ? "is-current" : ""} href={`/settings/${item.id}`}><FontAwesomeIcon icon={item.icon} />{item.label}</Link>)}</nav>
+        <nav className="management-panel settings-nav" aria-label="設定メニュー">{sections.map((item) => <Link key={item.id} className={section === item.id ? "is-current" : ""} href={`/settings/${item.id}`}><FontAwesomeIcon icon={item.icon} fixedWidth />{item.label}</Link>)}</nav>
         <section className={`management-panel settings-form ${section === "withdraw" ? "danger-panel" : ""}`}>
           {messageKey && messages[messageKey] ? <p className="auth-success" role="status">{messages[messageKey]}</p> : null}
           {errorKey ? <p className="auth-error" role="alert">{errors[errorKey] ?? "入力内容を確認して、もう一度お試しください。"}</p> : null}
@@ -101,7 +100,6 @@ export default async function SettingsPage({ params, searchParams }: { params: P
             </> : <p className="settings-note">このアカウントはGoogleログインのみです。メール・パスワードの変更項目はありません。</p>}
             <form action={signOutAll} className="settings-section settings-security-form">
               <div className="settings-section-heading"><strong><FontAwesomeIcon icon={faRightFromBracket} /> 全端末からログアウト</strong><small>現在の端末を含むすべてのセッションを終了します</small></div>
-              <label className="agreement-check"><input type="checkbox" name="confirmation" value={SIGN_OUT_CONFIRMATION} required /><span>保存していない入力がないことを確認しました。</span></label>
               <button className="outline-action" type="submit">すべての端末からログアウト</button>
             </form>
           </div> : null}
@@ -119,12 +117,12 @@ export default async function SettingsPage({ params, searchParams }: { params: P
               <span className={`connection-status ${hasGoogleIdentity ? "is-connected" : ""}`}>{hasGoogleIdentity ? <><FontAwesomeIcon icon={faCheck} />連携済み</> : "未連携"}</span>
               {!hasGoogleIdentity ? <form action={linkGoogle} className="connection-action"><button className="outline-action" type="submit"><FontAwesomeIcon icon={faGoogle} />Googleを連携</button></form> : null}
             </article>
-            {hasGoogleIdentity ? hasEmailIdentity ? <form action={unlinkGoogle} className="settings-section google-unlink-form">
+            {hasGoogleIdentity && hasEmailIdentity ? <form action={unlinkGoogle} className="settings-section google-unlink-form">
               <div className="settings-section-heading"><strong>Google連携を解除</strong><small>解除後はメール・パスワードでログインしてください。</small></div>
               <label className="form-field"><span>現在のパスワードで再認証</span><input name="current_password" type="password" autoComplete="current-password" required /></label>
               <label className="form-field"><span>確認のため「{GOOGLE_UNLINK_CONFIRMATION}」と入力</span><input name="confirmation" autoComplete="off" required /></label>
               <button className="danger-outline-action" type="submit">Google連携を解除</button>
-            </form> : <p className="settings-note"><FontAwesomeIcon icon={faShieldHalved} />Googleは現在の唯一のログイン方法なので解除できません。</p> : null}
+            </form> : null}
           </div> : null}
 
           {section === "withdraw" ? <form action={requestAccountDeletion} className="settings-withdraw-form"><h2>退会申請</h2><p>公開レシピは投稿者情報を匿名化して残ります。非公開レシピ等は申請から30日以内に削除されます。</p><label className="agreement-check"><input type="checkbox" required /><span>退会後のデータの取り扱いを確認しました。</span></label><button className="primary-action" type="submit">退会を申請する</button></form> : null}

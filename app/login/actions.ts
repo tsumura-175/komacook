@@ -23,7 +23,7 @@ async function safeNext(value: FormDataEntryValue | null, fallback = "/") {
 export async function signInWithGoogle(formData: FormData) {
   if (!hasSupabaseConfig()) redirect("/login?error=setup");
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getAuthCallbackUrl(await safeNext(formData.get("next"))) } });
+  const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getAuthCallbackUrl(await safeNext(formData.get("next"))), queryParams: { prompt: "select_account" } } });
   if (error || !data.url) redirect("/login?error=google");
   redirect(data.url);
 }

@@ -20,4 +20,3 @@ export function valuesMatch(value: string, confirmation: string) {
 }
 
 export const GOOGLE_UNLINK_CONFIRMATION = "Google連携を解除";
-export const SIGN_OUT_CONFIRMATION = "all-devices";
