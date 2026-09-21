@@ -16,7 +16,9 @@ export default defineConfig({
   expect: { timeout: 15_000, toHaveScreenshot: { animations: "disabled", maxDiffPixelRatio: 0.01 } },
   use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure", video: "retain-on-failure", actionTimeout: 15_000 },
   webServer: process.env.E2E_BASE_URL ? undefined : {
-    command: "npm run dev -- -p 3010",
+    // CI では直前に production build を作成済み。next dev 固有の eval と
+    // 本番CSPの衝突を避け、公開時に近い next start で検証する。
+    command: process.env.CI ? "npm run start -- -p 3010" : "npm run dev -- -p 3010",
     url: baseURL,
     reuseExistingServer: true,
     timeout: 120_000,
@@ -26,6 +28,9 @@ export default defineConfig({
     { name: "chromium-mobile", use: { ...devices["Pixel 7"] }, testMatch: /responsive\.spec\.ts/ },
     { name: "visual-chromium", use: { ...devices["Desktop Chrome"] }, testMatch: /visual-regression\.spec\.ts/ },
     { name: "visual-firefox", use: { browserName: "firefox", viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 }, testMatch: /visual-regression\.spec\.ts/ },
-    { name: "visual-webkit", use: { ...devices["iPhone 13"] }, testMatch: /visual-regression\.spec\.ts/ },
+    // iPhone端末プリセットのdeviceScaleFactorを768px以上の検証幅へ重ねると、
+    // WebKitのfullPageスクリーンショットが32767px上限を超える。Safari相当の
+    // WebKitエンジンは維持し、各テストが指定する表示幅をそのまま使う。
+    { name: "visual-webkit", use: { browserName: "webkit", viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 }, testMatch: /visual-regression\.spec\.ts/ },
   ],
 });

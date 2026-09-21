@@ -42,7 +42,9 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      # visual-regression.spec.ts は Chromium・Firefox・WebKit の全プロジェクトを
+      # 実行するため、Chromium だけでは実行ファイル不足で必ず失敗する。
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
       - name: Upload Playwright failure artifacts
         if: failure()

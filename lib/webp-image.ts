@@ -51,7 +51,10 @@ export function validateWebpImage(source: ArrayBuffer, expected: ImageSize, maxB
     if (forbiddenChunks.has(chunk) || !permittedChunks.has(chunk)) throw new Error("webp metadata is not allowed");
 
     if (chunk === "VP8X") {
-      if (length !== 10 || bytes[dataOffset] !== 0) throw new Error("animated or extended webp is not allowed");
+      // VP8X の機能ビットだけではメタデータの有無を判定できない。
+      // 実体のチャンクを許可リストで検査しているため、Canvas 実装ごとの
+      // ビット差異は許可し、EXIF / XMP / ICC / animation の実データは拒否する。
+      if (length !== 10) throw new Error("invalid extended webp header");
       size = { width: readU24(bytes, dataOffset + 4) + 1, height: readU24(bytes, dataOffset + 7) + 1 };
     } else if (chunk === "VP8 ") {
       const parsed = vp8Size(bytes, dataOffset, length);

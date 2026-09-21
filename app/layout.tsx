@@ -10,6 +10,9 @@ config.autoAddCss = false;
 
 const mPlus1p = M_PLUS_1p({
   weight: ["400", "500", "700", "800"],
+  // M PLUS 1p は日本語用 subset を preload できない。Vinext/Workers の
+  // ビルド時検証に合わせ、事前読み込みを無効にして CSS 読み込みへ委ねる。
+  preload: false,
   display: "swap",
   variable: "--font-m-plus-1p",
   fallback: ["Yu Gothic", "Hiragino Kaku Gothic ProN", "sans-serif"],

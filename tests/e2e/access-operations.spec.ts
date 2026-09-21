@@ -23,7 +23,7 @@ test.describe("権限と運用処理", () => {
       await page.goto("/mypage");
       await expect(page).toHaveURL(/\/login\?next=%2Fmypage/);
       await page.goto(`/recipes/${privateRecipe.data!.id}`);
-      await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "該当のレシピが存在しません" })).toBeVisible();
 
       await login(page, member.email, member.password);
       await page.goto("/admin");

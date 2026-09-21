@@ -16,8 +16,16 @@ export const ADMIN_PASSWORD = "Komacook!Admin2026";
 export const MAMA_EMAIL = "mama@komacook.local";
 export const MAMA_PASSWORD = "Komacook!Mama2026";
 
+function isLocalTestSupabase(url: string) {
+  return url.includes("127.0.0.1")
+    || url.includes("localhost")
+    // LinuxコンテナからWindows/macOSのローカルSupabaseへ接続して、
+    // GitHub Actionsと同じLinux向け視覚基準画像を作る場合だけ許可する。
+    || (process.env.E2E_ALLOW_CONTAINER_SUPABASE === "true" && url.includes("host.docker.internal"));
+}
+
 export function adminClient(): SupabaseClient {
-  if (!LOCAL_SUPABASE_URL.includes("127.0.0.1") && !LOCAL_SUPABASE_URL.includes("localhost")) {
+  if (!isLocalTestSupabase(LOCAL_SUPABASE_URL)) {
     throw new Error("E2Eの管理操作はローカルSupabaseでのみ実行できます。");
   }
   if (!LOCAL_SECRET_KEY) throw new Error("SUPABASE_SECRET_KEYが必要です。");
@@ -25,7 +33,7 @@ export function adminClient(): SupabaseClient {
 }
 
 export function databaseClient() {
-  if (!LOCAL_DATABASE_URL.includes("127.0.0.1") && !LOCAL_DATABASE_URL.includes("localhost")) {
+  if (!isLocalTestSupabase(LOCAL_DATABASE_URL)) {
     throw new Error("E2EのDB照合はローカルPostgreSQLでのみ実行できます。");
   }
   return postgres(LOCAL_DATABASE_URL, { max: 1, idle_timeout: 1 });
