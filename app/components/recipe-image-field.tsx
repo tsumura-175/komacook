@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCamera, faImage, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
+import { cropImageToWebp } from "./client-image-processing";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
@@ -59,12 +60,19 @@ export const RecipeImageField = forwardRef<RecipeImageFieldHandle, Props>(functi
       // sourceFile がある間は、明示保存時に必ずステージングする。親の再描画で
       // フィールド参照が更新されても、選択済みの完成写真を取りこぼさないため。
       if (!sourceFile) return;
+      const normalized = await cropImageToWebp(
+        sourceFile,
+        PREVIEW_WIDTH,
+        PREVIEW_HEIGHT,
+        { zoom, positionX, positionY },
+        "recipe.webp",
+        0.86,
+      );
       const supabase = createClient();
       const { data } = await supabase.auth.getUser();
       if (!data.user) throw new Error("ログインが必要です。");
-      const extension = sourceFile.type === "image/png" ? "png" : sourceFile.type === "image/webp" ? "webp" : "jpg";
-      const stagedPath = `${data.user.id}/staging/${crypto.randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from("recipe-images").upload(stagedPath, sourceFile, { contentType: sourceFile.type, upsert: false });
+      const stagedPath = `${data.user.id}/staging/${crypto.randomUUID()}.webp`;
+      const { error: uploadError } = await supabase.storage.from("recipe-images").upload(stagedPath, normalized, { contentType: "image/webp", upsert: false });
       if (uploadError) throw new Error("画像を一時保存できませんでした。もう一度お試しください。");
       stagedPathRef.current = stagedPath;
       formData.set("staged_image_path", stagedPath);
@@ -81,7 +89,7 @@ export const RecipeImageField = forwardRef<RecipeImageFieldHandle, Props>(functi
       if (sourceFile) setHasPersistedImage(true);
       else if (removed) setHasPersistedImage(false);
     },
-  }), [removed, sourceFile]);
+  }), [positionX, positionY, removed, sourceFile, zoom]);
 
   async function chooseFile(file: File | undefined) {
     if (!file) return;

@@ -12,3 +12,7 @@ backups
 supabase/.temp/
 supabase/.branches/
 *.tsbuildinfo
+/dist/
+.vinext/
+.wrangler/
+worker-configuration.d.ts

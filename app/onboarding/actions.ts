@@ -56,7 +56,7 @@ export async function completeOnboarding(formData: FormData): Promise<Onboarding
   let uploadedPath: string | null = null;
   const avatar = formData.get("avatar");
   if (value.avatarMode === "upload" && avatar instanceof File && avatar.size > 0) {
-    let normalizedAvatar: Buffer;
+    let normalizedAvatar: ArrayBuffer;
     try {
       normalizedAvatar = await normalizeAvatarImage(avatar);
     } catch {

@@ -26,7 +26,7 @@ export async function updateProfile(formData: FormData) {
   let uploadedPath: string | null = null;
   const avatar = formData.get("avatar");
   if (parsed.data.avatarMode === "upload" && avatar instanceof File && avatar.size > 0) {
-    let normalizedAvatar: Buffer;
+    let normalizedAvatar: ArrayBuffer;
     try {
       normalizedAvatar = await normalizeAvatarImage(avatar);
     } catch {

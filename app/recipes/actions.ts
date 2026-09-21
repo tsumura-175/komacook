@@ -78,11 +78,11 @@ export async function saveRecipe(input: RecipeInput, intent: "autosave" | "draft
   const stagedImagePathValue = imageData?.get("staged_image_path");
   const stagedImagePath = typeof stagedImagePathValue === "string" && stagedImagePathValue ? stagedImagePathValue : null;
   const removeImage = imageData?.get("remove_image") === "true";
-  let normalizedImage: Buffer | null = null;
+  let normalizedImage: ArrayBuffer | null = null;
 
   if (stagedImagePath) {
     const ownedStagingPrefix = `${user.id}/staging/`;
-    if (!stagedImagePath.startsWith(ownedStagingPrefix) || !/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(stagedImagePath.slice(ownedStagingPrefix.length))) {
+    if (!stagedImagePath.startsWith(ownedStagingPrefix) || !/^[0-9a-f-]{36}\.webp$/i.test(stagedImagePath.slice(ownedStagingPrefix.length))) {
       return { ok: false, error: "一時画像の保存先が正しくありません。" };
     }
     const crop = imageCropSchema.safeParse({
@@ -131,14 +131,14 @@ export async function saveRecipe(input: RecipeInput, intent: "autosave" | "draft
   const previousImageResult = await previousImagePromise;
   if (previousImageResult.error) return { ok: false, error: "現在の画像情報を確認できませんでした。" };
   const previousStepPaths = new Set((previousImageResult.data?.recipe_steps ?? []).flatMap((step) => step.image_path ? [step.image_path] : []));
-  const stagedStepImages = new Map<number, Buffer>();
+  const stagedStepImages = new Map<number, ArrayBuffer>();
   const stagedStepPaths: string[] = [];
   for (const step of values.steps) {
     const stagedPathValue = imageData?.get(`step_image_staged_${step.clientId}`);
     if (!stagedPathValue) continue;
     if (typeof stagedPathValue !== "string") return { ok: false, error: "工程写真の一時保存先が正しくありません。" };
     const prefix = `${user.id}/staging/`;
-    if (!stagedPathValue.startsWith(prefix) || !/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(stagedPathValue.slice(prefix.length))) return { ok: false, error: "工程写真の一時保存先が正しくありません。" };
+    if (!stagedPathValue.startsWith(prefix) || !/^[0-9a-f-]{36}\.webp$/i.test(stagedPathValue.slice(prefix.length))) return { ok: false, error: "工程写真の一時保存先が正しくありません。" };
     stagedStepPaths.push(stagedPathValue);
     const { data: source, error: sourceError } = await supabase.storage.from("recipe-images").download(stagedPathValue);
     if (sourceError || !source) { await supabase.storage.from("recipe-images").remove(stagedStepPaths); return { ok: false, error: "一時保存した工程写真を読み込めませんでした。" }; }

@@ -1,25 +1,11 @@
 import "server-only";
 
-import sharp from "sharp";
+import { validateWebpImage } from "./webp-image";
 
 export const MAX_AVATAR_SOURCE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp"]);
 
+/** Canvasで正規化済みの512px WebPをWorkers側で再検証する。 */
 export async function normalizeAvatarImage(file: File) {
-  if (file.size < 1 || file.size > MAX_AVATAR_SOURCE_BYTES) {
-    throw new Error("invalid avatar size");
-  }
-
-  const source = Buffer.from(await file.arrayBuffer());
-  const image = sharp(source, { failOn: "error", limitInputPixels: 40_000_000 });
-  const metadata = await image.metadata();
-  if (!metadata.format || !ALLOWED_FORMATS.has(metadata.format) || !metadata.width || !metadata.height) {
-    throw new Error("invalid avatar format");
-  }
-
-  return image
-    .rotate()
-    .resize(512, 512, { fit: "cover", position: "centre" })
-    .webp({ quality: 88 })
-    .toBuffer();
+  if (file.type !== "image/webp") throw new Error("invalid avatar format");
+  return validateWebpImage(await file.arrayBuffer(), { width: 512, height: 512 }, MAX_AVATAR_SOURCE_BYTES);
 }

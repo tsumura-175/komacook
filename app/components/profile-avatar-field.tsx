@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ProfileAvatar, profileColorOptions, profileIconOptions } from "./profile-avatar";
+import { cropImageToWebp } from "./client-image-processing";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -18,24 +19,7 @@ type Props = {
 };
 
 async function cropImage(file: File, zoom: number, positionX: number, positionY: number) {
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    bitmap.close();
-    throw new Error("画像を処理できませんでした。");
-  }
-  const scale = Math.max(512 / bitmap.width, 512 / bitmap.height) * zoom;
-  const width = bitmap.width * scale;
-  const height = bitmap.height * scale;
-  context.drawImage(bitmap, (512 - width) * (positionX / 100), (512 - height) * (positionY / 100), width, height);
-  bitmap.close();
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("画像を変換できませんでした。")), "image/webp", 0.88);
-  });
-  return new File([blob], "profile.webp", { type: "image/webp" });
+  return cropImageToWebp(file, 512, 512, { zoom, positionX, positionY }, "profile.webp", 0.88);
 }
 
 export const ProfileAvatarField = forwardRef<ProfileAvatarFieldHandle, Props>(function ProfileAvatarField({

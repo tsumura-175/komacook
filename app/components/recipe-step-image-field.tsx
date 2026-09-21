@@ -5,6 +5,7 @@ import { faCamera, faImage, faTrashCan } from "@fortawesome/free-solid-svg-icons
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Image from "next/image";
 import { createClient } from "../../lib/supabase/client";
+import { coverImageToWebp } from "./client-image-processing";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxSourceBytes = 10 * 1024 * 1024;
@@ -33,12 +34,12 @@ export const RecipeStepImageField = forwardRef<RecipeStepImageFieldHandle, Props
   useImperativeHandle(ref, () => ({
     async stageSource(formData) {
       if (!sourceFile || !dirtyRef.current) return;
+      const normalized = await coverImageToWebp(sourceFile, 960, 720, "recipe-step.webp", 0.84);
       const supabase = createClient();
       const { data } = await supabase.auth.getUser();
       if (!data.user) throw new Error("ログインが必要です。");
-      const extension = sourceFile.type === "image/png" ? "png" : sourceFile.type === "image/webp" ? "webp" : "jpg";
-      const stagedPath = `${data.user.id}/staging/${crypto.randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from("recipe-images").upload(stagedPath, sourceFile, { contentType: sourceFile.type, upsert: false });
+      const stagedPath = `${data.user.id}/staging/${crypto.randomUUID()}.webp`;
+      const { error: uploadError } = await supabase.storage.from("recipe-images").upload(stagedPath, normalized, { contentType: "image/webp", upsert: false });
       if (uploadError) throw new Error("工程写真を一時保存できませんでした。もう一度お試しください。");
       stagedPathRef.current = stagedPath;
       formData.set(`step_image_staged_${rowId}`, stagedPath);
