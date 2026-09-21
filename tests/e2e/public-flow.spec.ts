@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("公開レシピをDB検索して詳細と共有方法を確認できる", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".home-hero > p")).toHaveText("おいしかった、を何度でも。");
+  await expect(page.locator(".home-hero > p")).toHaveCount(0);
 
   await page.getByLabel("レシピを検索").fill("鶏");
   await page.getByRole("button", { name: "検索", exact: true }).click();

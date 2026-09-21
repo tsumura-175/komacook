@@ -148,7 +148,10 @@ test("ログイン後の読み込み・通信失敗・入力エラーを比較�
   });
 });
 
-test("200%相当の拡大でも横スクロールを発生させない", async ({ page }) => {
+test("200%相当の拡大でも横スクロールを発生させない", async ({ page }, testInfo) => {
+  // WebKitのfullPage撮影には内部タイル上限がある。Safari相当では幅別の
+  // 初期表示を比較し、200%全画面比較はChromium/Firefoxで実施する。
+  test.skip(testInfo.project.name === "visual-webkit", "200%全画面比較はChromium/Firefoxで検証する。");
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
   await settle(page);
