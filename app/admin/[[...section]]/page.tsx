@@ -29,12 +29,15 @@ export default async function AdminPage({ params, searchParams }: { params: Prom
   if (!current) notFound();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) redirect(`/login?next=${encodeURIComponent(section ? `/admin/${section}` : "/admin")}`);
-  const isAdmin = usesD1AppData()
+  const d1Enabled = usesD1AppData();
+  // The cutover check must be reachable before the application-data flag is
+  // enabled, otherwise a newly provisioned D1 administrator cannot verify it.
+  const isAdmin = d1Enabled || section === "cutover-check"
     ? Boolean(await (await getD1Database()).prepare("SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'admin'").bind(authData.user.id).first())
     : (await supabase.rpc("is_admin")).data;
   if (!isAdmin) notFound();
 
-  const d1 = usesD1AppData() ? await getD1Database() : null;
+  const d1 = d1Enabled ? await getD1Database() : null;
   const [profiles, recipes, openReports, reportRows] = d1 ? await Promise.all([
     d1.prepare("SELECT COUNT(*) AS count FROM profiles").first<{ count: number }>(),
     d1.prepare("SELECT COUNT(*) AS count FROM recipes WHERE visibility = 'public' AND status = 'published' AND deleted_at IS NULL").first<{ count: number }>(),
