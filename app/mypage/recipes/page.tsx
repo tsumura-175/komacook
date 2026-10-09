@@ -10,7 +10,6 @@ import { RecipeDeleteDialog } from "../../components/recipe-delete-dialog";
 import { MyRecipeCard } from "../../components/my-recipe-card";
 import { filterAndSortMyRecipes, type MyRecipeSort, type MyRecipeTab } from "../../../lib/my-recipes";
 import type { MyRecipe } from "../../../lib/my-recipe-types";
-import { createClient } from "../../../lib/supabase/client";
 import { permanentlyDeleteRecipe, restoreRecipe, toggleFavorite } from "../../recipes/actions";
 
 type TabId = MyRecipeTab;
@@ -41,56 +40,16 @@ export default function MyRecipesPage() {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
     const requestedTabId = tabs.some((tab) => tab.id === requestedTab) ? requestedTab as TabId : null;
     const tabTimer = requestedTabId ? window.setTimeout(() => setActiveTab(requestedTabId), 0) : undefined;
-    const supabase = createClient();
     let cancelled = false;
     async function loadRecipes() {
       try {
-        const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError || !authData.user) throw new Error("ログイン状態を確認できませんでした。");
-        const [mineResult, favoriteResult, categoryResult] = await Promise.all([
-          supabase.from("recipes").select("id, title, cooking_time_minutes, visibility, status, source_type, updated_at, purge_after, image_path, categories(name), recipe_tags(tags(name))").eq("owner_user_id", authData.user.id).order("updated_at", { ascending: false }),
-          supabase.from("favorites").select("recipe_id, recipes(id, title, cooking_time_minutes, visibility, updated_at, image_path, categories(name), recipe_tags(tags(name)))").eq("user_id", authData.user.id).order("created_at", { ascending: false }),
-          supabase.from("categories").select("name").eq("is_active", true).order("sort_order"),
-        ]);
-        if (mineResult.error || favoriteResult.error || categoryResult.error) {
-          throw new Error("マイレシピを読み込めませんでした。時間をおいて再度お試しください。");
-        }
-
-        const favoriteRecipes = (favoriteResult.data ?? []).flatMap((row) => {
-          const recipe = Array.isArray(row.recipes) ? row.recipes[0] : row.recipes;
-          return recipe ? [recipe] : [];
-        });
-        const imagePaths = [...new Set([...(mineResult.data ?? []), ...favoriteRecipes]
-          .flatMap((recipe) => recipe.image_path ? [recipe.image_path] : []))];
-        const signedUrlMap = new Map<string, string>();
-        let imageLoadFailed = false;
-        if (imagePaths.length) {
-          const { data: signedImages, error: signedImagesError } = await supabase.storage.from("recipe-images").createSignedUrls(imagePaths, 3600);
-          imageLoadFailed = Boolean(signedImagesError) || (signedImages ?? []).some((image) => Boolean(image.error));
-          for (const image of signedImages ?? []) {
-            if (image.path && image.signedUrl) signedUrlMap.set(image.path, image.signedUrl);
-          }
-        }
-
-        const relationName = (value: unknown) => { const item = Array.isArray(value) ? value[0] : value; return item && typeof item === "object" && "name" in item ? String(item.name) : "その他"; };
-        const relationTags = (value: unknown) => Array.isArray(value) ? value.flatMap((item) => item && typeof item === "object" && "tags" in item ? [relationName(item.tags)] : []) : [];
-        const ownRows: MyRecipe[] = (mineResult.data ?? []).map((recipe) => ({
-          id: recipe.id, name: recipe.title, category: relationName(recipe.categories), tags: relationTags(recipe.recipe_tags), time: recipe.cooking_time_minutes ?? 0,
-          visibility: recipe.visibility === "public" ? "公開" : "非公開", source: recipe.status === "deleted" ? "削除済み" : recipe.status === "draft" ? "下書き" : recipe.source_type === "copied" ? "コピー" : "手入力",
-          tab: recipe.status === "deleted" ? "trash" : recipe.status === "draft" ? "drafts" : "mine", updatedAt: recipe.updated_at,
-          updatedLabel: recipe.status === "deleted" && recipe.purge_after ? `あと${Math.max(0, Math.ceil((new Date(recipe.purge_after).getTime() - Date.now()) / 86400000))}日` : new Date(recipe.updated_at).toLocaleDateString("ja-JP"),
-          imageUrl: recipe.image_path ? signedUrlMap.get(recipe.image_path) ?? null : null,
-        }));
-        const favoriteRows: MyRecipe[] = favoriteRecipes.map((recipe) => ({
-          id: recipe.id, name: recipe.title, category: relationName(recipe.categories), tags: relationTags(recipe.recipe_tags), time: recipe.cooking_time_minutes ?? 0,
-          visibility: "公開", source: "保存済み", tab: "favorites", updatedAt: recipe.updated_at, updatedLabel: new Date(recipe.updated_at).toLocaleDateString("ja-JP"),
-          imageUrl: recipe.image_path ? signedUrlMap.get(recipe.image_path) ?? null : null,
-        }));
+        const response = await fetch("/api/my-recipes", { cache: "no-store" });
+        const payload = await response.json() as { recipes?: MyRecipe[]; categories?: string[]; savedRecipeIds?: string[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "マイレシピを読み込めませんでした。時間をおいて再度お試しください。");
         if (cancelled) return;
-        setCategories((categoryResult.data ?? []).map((item) => item.name));
-        setSavedRecipeIds(new Set(favoriteRows.map((recipe) => recipe.id)));
-        setRecipes([...ownRows, ...favoriteRows]);
-        if (imageLoadFailed) setActionStatus("一部の完成写真を読み込めませんでした。時間をおいて再度お試しください。");
+        setCategories(payload.categories ?? []);
+        setSavedRecipeIds(new Set(payload.savedRecipeIds ?? []));
+        setRecipes(payload.recipes ?? []);
       } catch (error) {
         if (!cancelled) setActionStatus(error instanceof Error ? error.message : "マイレシピを読み込めませんでした。");
       } finally {
