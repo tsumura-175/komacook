@@ -1,6 +1,8 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { ProfileAvatar, profileColorOptions, profileIconOptions } from "./profile-avatar";
 import { cropImageToWebp } from "./client-image-processing";
 
@@ -85,7 +87,7 @@ export const ProfileAvatarField = forwardRef<ProfileAvatarFieldHandle, Props>(fu
       <label><span>拡大</span><input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
       <label><span>左右位置</span><input type="range" min="0" max="100" value={positionX} onChange={(event) => setPositionX(Number(event.target.value))} /></label>
       <label><span>上下位置</span><input type="range" min="0" max="100" value={positionY} onChange={(event) => setPositionY(Number(event.target.value))} /></label>
-      <button className="text-action" type="button" onClick={() => setMode("preset")}>用意されたアイコンを使う</button>
+      <button className="profile-use-preset-button" type="button" onClick={() => setMode("preset")}><ProfileAvatar presetKey={icon} color={color} /><span>用意されたアイコンを使う</span><FontAwesomeIcon icon={faChevronRight} /></button>
     </div> : <>
       <div className="profile-icon-grid">{profileIconOptions.map(([key, label]) => <button key={key} type="button" className={icon === key ? "is-selected" : ""} aria-label={label} aria-pressed={icon === key} onClick={() => { setIcon(key); setMode("preset"); }}><ProfileAvatar presetKey={key} color={color} /></button>)}</div>
       <div className="profile-color-grid" aria-label="アイコンの色">{profileColorOptions.map((value) => <button key={value} type="button" data-color={value} className={color === value ? "is-selected" : ""} aria-label={`${value}色`} aria-pressed={color === value} onClick={() => setColor(value)} />)}</div>
