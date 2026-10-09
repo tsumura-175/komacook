@@ -259,7 +259,7 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
         </div>
         <aside className="editor-save-panel">
           <div className={`save-status is-${savePhase}`}><FontAwesomeIcon icon={saveStatusIcon} spin={savePhase === "saving"} /><span><strong>保存状態</strong><small aria-live="polite">{status}</small></span></div>
-          <button className="outline-action full-action" type="button" disabled={saving} onClick={() => { if (formRef.current) void persist(currentStatusRef.current === "published" ? "save" : "draft", buildInput(formRef.current)); }}>{saving ? "保存中…" : initialRecipe.status === "published" ? "変更を保存" : "下書きを保存"}</button>
+          <button className="outline-action full-action" type="button" disabled={saving} onClick={() => { if (formRef.current) void persist(currentStatusRef.current === "published" ? "save" : "draft", buildInput(formRef.current)); }}>{saving ? "保存中…" : "下書きを保存"}</button>
           <button className="primary-action full-action" type="submit" disabled={saving}>{mode === "edit" ? "変更内容を確認" : "入力内容を確認"} <FontAwesomeIcon icon={faChevronRight} /></button>
           {mode === "edit" && savedId ? <button className="outline-action full-action" type="button" disabled={saving} onClick={() => setTrashConfirmOpen(true)}><FontAwesomeIcon icon={faTrashCan} />ゴミ箱に移す</button> : null}
         </aside>
