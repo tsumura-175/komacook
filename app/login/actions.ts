@@ -7,6 +7,8 @@ import { getAuthCallbackUrl } from "../../lib/site-url";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, validateNewPassword } from "../../lib/password-policy";
 import { hasSupabaseConfig } from "../../lib/supabase/config";
 import { createClient } from "../../lib/supabase/server";
+import { ensureD1Profile } from "../../lib/d1-profiles";
+import { usesD1AppData } from "../../lib/d1-bindings";
 
 export type AuthState = { error?: string; success?: string; confirmationRequired?: boolean; requestId?: string };
 const unavailable = "認証サーバーの接続設定が未完了です。Supabaseの環境変数を設定すると利用できます。";
@@ -36,7 +38,13 @@ export async function signInWithPassword(_: AuthState, formData: FormData): Prom
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error?.code === "email_not_confirmed") return { confirmationRequired: true, requestId: crypto.randomUUID() };
   if (error) return { error: "メールアドレスまたはパスワードが正しくありません。" };
-  const { data: profile } = await supabase.from("profiles").select("account_status, onboarding_completed").eq("user_id", data.user.id).maybeSingle();
+  const d1Profile = usesD1AppData()
+    ? await ensureD1Profile(data.user.id, String(data.user.user_metadata.full_name ?? data.user.user_metadata.name ?? "").trim() || "こまクックユーザー")
+    : null;
+  const { data: legacyProfile } = usesD1AppData()
+    ? { data: null }
+    : await supabase.from("profiles").select("account_status, onboarding_completed").eq("user_id", data.user.id).maybeSingle();
+  const profile = d1Profile ?? legacyProfile;
   if (profile && profile.account_status !== "active") {
     await supabase.auth.signOut();
     return { error: profile.account_status === "suspended" ? "このアカウントは現在利用停止中です。お問い合わせから運営へご連絡ください。" : "このアカウントは退会処理中です。" };

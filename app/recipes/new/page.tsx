@@ -12,7 +12,6 @@ import { RecipeImageField, type RecipeImageFieldHandle } from "../../components/
 import { RecipeStepImageField, type RecipeStepImageFieldHandle } from "../../components/recipe-step-image-field";
 import { moveRecipeRow, RECIPE_UNIT_SUGGESTIONS, savedTimeLabel } from "../../../lib/recipe-editor";
 import { localPublishedDraftKey, readLocalPublishedDraft, type LocalPublishedDraft } from "../../../lib/recipe-editor-draft";
-import { createClient } from "../../../lib/supabase/client";
 import { moveRecipeToTrash, saveRecipe, type RecipeInput } from "../actions";
 
 type IngredientRow = { id: number; name: string; quantity: string; unit: string; note: string; group: string };
@@ -83,25 +82,20 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
 
   useEffect(() => {
     if (!clientIdRef.current) clientIdRef.current = crypto.randomUUID();
-    const supabase = createClient();
     let cancelled = false;
     async function loadFormData() {
-      const categoryRequest = fetch("/api/categories", { cache: "no-store" })
-        .then(async (response) => response.ok ? response.json() as Promise<{ categories: Array<{ id: string; name: string }> }> : { categories: [] })
-        .catch(() => ({ categories: [] as Array<{ id: string; name: string }> }));
-      const { data: authData } = mode === "edit" ? await supabase.auth.getUser() : { data: { user: null } };
-      const recipeRequest = mode === "edit" && params.id && authData.user
-        ? supabase.from("recipes").select("*, recipe_ingredients(*), recipe_steps(*), recipe_tags(tags(name))").eq("id", params.id).eq("owner_user_id", authData.user.id).single()
-        : Promise.resolve({ data: null, error: null });
-      const [categoryResult, recipeResult] = await Promise.all([categoryRequest, recipeRequest]);
+      const url = mode === "edit" && params.id ? `/api/recipe-editor?id=${encodeURIComponent(params.id)}` : "/api/recipe-editor";
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = await response.json() as { categories?: Array<{ id: string; name: string }>; recipe?: LoadedRecipe | null; error?: string };
       if (cancelled) return;
-      setCategories(categoryResult.categories ?? []);
+      if (!response.ok) { setStatus(payload.error ?? "レシピ編集情報を読み込めませんでした。"); return; }
+      setCategories(payload.categories ?? []);
       if (mode !== "edit") return;
-      if (recipeResult.error || !recipeResult.data) {
+      if (!payload.recipe) {
         router.replace("/mypage/recipes");
         return;
       }
-      const recipe = recipeResult.data as LoadedRecipe;
+      const recipe = payload.recipe;
       savedIdRef.current = recipe.id;
       clientIdRef.current = recipe.id;
       lockVersionRef.current = Number(recipe.lock_version ?? 1);
@@ -127,19 +121,10 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
         }));
       const displayedSteps: StepRow[] = localDraft
         ? localDraft.input.steps.map((step) => ({ id: nextRowIdRef.current++, text: step.instruction, imagePath: step.imagePath ?? null, imageUrl: null }))
-        : recipe.recipe_steps.toSorted((a, b) => Number(a.sort_order) - Number(b.sort_order)).map((item) => ({ id: nextRowIdRef.current++, text: String(item.instruction), imagePath: typeof item.image_path === "string" ? item.image_path : null, imageUrl: null }));
-      const stepImagePaths = displayedSteps.flatMap((step) => step.imagePath ? [step.imagePath] : []);
-      if (stepImagePaths.length) {
-        const { data: signed } = await supabase.storage.from("recipe-images").createSignedUrls(stepImagePaths, 3600);
-        const urls = new Map((signed ?? []).map((item) => [item.path, item.signedUrl]));
-        displayedSteps.forEach((step) => { if (step.imagePath) step.imageUrl = urls.get(step.imagePath) ?? null; });
-      }
+        : recipe.recipe_steps.toSorted((a, b) => Number(a.sort_order) - Number(b.sort_order)).map((item) => ({ id: nextRowIdRef.current++, text: String(item.instruction), imagePath: typeof item.image_path === "string" ? item.image_path : null, imageUrl: typeof item.image_url === "string" ? item.image_url : null }));
       setIngredients(displayedIngredients.length ? displayedIngredients : [{ id: nextRowIdRef.current++, name: "", quantity: "", unit: "g", note: "", group: "" }]);
       setSteps(displayedSteps.length ? displayedSteps : [{ id: nextRowIdRef.current++, text: "", imagePath: null, imageUrl: null }]);
-      if (typeof recipe.image_path === "string" && recipe.image_path) {
-        const { data: imageData } = await supabase.storage.from("recipe-images").createSignedUrl(recipe.image_path, 3600);
-        if (!cancelled) setInitialImageUrl(imageData?.signedUrl ?? null);
-      }
+      if (!cancelled) setInitialImageUrl(typeof recipe.image_url === "string" ? recipe.image_url : null);
       if (!cancelled) {
         setInitialRecipe(displayedRecipe);
         setSavePhase("saved");

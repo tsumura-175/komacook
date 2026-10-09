@@ -8,17 +8,28 @@ import { getPublicRecipesByOwner } from "../../../lib/recipes";
 import { createClient } from "../../../lib/supabase/server";
 import { ProfileAvatar } from "../../components/profile-avatar";
 import { RecipeThumbnail } from "../../components/recipe-thumbnail";
+import { d1AvatarUrl, getD1Profile } from "../../../lib/d1-profiles";
+import { usesD1AppData } from "../../../lib/d1-bindings";
 
 export default async function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const [{ data: profile }, { data: authData }, recipes] = await Promise.all([
-    supabase.from("public_profiles").select("user_id, display_name, family_adults, family_children, avatar_kind, preset_avatar_key, avatar_color, avatar_path").eq("user_id", id).maybeSingle(),
+  const d1 = usesD1AppData();
+  const [{ data: legacyProfile }, d1Profile, { data: authData }, recipes] = await Promise.all([
+    d1 ? Promise.resolve({ data: null }) : supabase.from("public_profiles").select("user_id, display_name, family_adults, family_children, avatar_kind, preset_avatar_key, avatar_color, avatar_path").eq("user_id", id).maybeSingle(),
+    d1 ? getD1Profile(id) : Promise.resolve(null),
     supabase.auth.getUser(),
     getPublicRecipesByOwner(id).catch(() => []),
   ]);
+  const profile = d1Profile ? {
+    user_id: d1Profile.user_id, display_name: d1Profile.display_name,
+    family_adults: d1Profile.show_family ? d1Profile.family_adults : null,
+    family_children: d1Profile.show_family ? d1Profile.family_children : null,
+    avatar_kind: d1Profile.avatar_kind, preset_avatar_key: d1Profile.preset_avatar_key,
+    avatar_color: d1Profile.avatar_color, avatar_path: null,
+  } : legacyProfile;
   if (!profile) notFound();
-  const avatarUrl = profile.avatar_path ? (await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)).data?.signedUrl ?? null : null;
+  const avatarUrl = d1Profile ? d1AvatarUrl(d1Profile) : profile.avatar_path ? (await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)).data?.signedUrl ?? null : null;
   const familyParts = [profile.family_adults !== null ? `大人${profile.family_adults}人` : "", profile.family_children !== null ? `子ども${profile.family_children}人` : ""].filter(Boolean);
 
   return <div className="app-shell member-page-shell"><SiteHeader /><main className="member-page-main">
