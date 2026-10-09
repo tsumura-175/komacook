@@ -7,8 +7,9 @@ if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user
   process.exitCode = 1;
 } else {
   const sql = `
-    INSERT OR IGNORE INTO profiles (user_id, display_name) VALUES ('${userId}', 'こまクックユーザー');
+    INSERT OR IGNORE INTO profiles (user_id, display_name, onboarding_completed) VALUES ('${userId}', 'こまクックユーザー', 1);
     INSERT OR IGNORE INTO user_roles (user_id, role) VALUES ('${userId}', 'admin');
+    UPDATE profiles SET onboarding_completed = 1 WHERE user_id = '${userId}';
   `;
   // Passing SQL through a Windows shell strips the value following --command.
   // Run Wrangler's JavaScript entrypoint with Node so the SQL stays one argument.

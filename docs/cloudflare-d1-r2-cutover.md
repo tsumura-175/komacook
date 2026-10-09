@@ -7,7 +7,7 @@
 - 本番 Worker `komacook` が最新の `main` をデプロイ済みであること。
 - D1 は `komacook-production`、R2 は `komacook-images-production` を使用すること。
 - 既存レシピ・既存画像を移行しない方針であること。Supabase Auth のユーザーは削除しない。
-- 切替前に、Cloudflare Worker の `APP_DATA_BACKEND` を設定していないこと。
+- `wrangler.jsonc` の `APP_DATA_BACKEND` を変更する前に、D1とR2の確認を終えること。
 
 ## 1. D1スキーマとマスタを準備する
 
@@ -31,22 +31,20 @@ npm run d1:grant-admin:remote -- <コピーしたUUID>
 ## 3. 切替前確認を行う
 
 1. `https://komacook.jp/admin/cutover-check` を開く。
-2. 「有効カテゴリ」「管理者権限」「R2画像参照」がすべて **確認済み** であることを確認する。
+2. 「有効カテゴリ」「管理者権限」「管理者の初回設定」「R2画像参照」がすべて **確認済み** であることを確認する。
 3. 「期限切れ一時画像」が要確認なら、Cloudflare Cron の保守Workerを一度実行してから再確認する。
 
 画像を移行しない方針では、R2画像参照数が0件でも正常である。
 
 ## 4. 切替する
 
-Cloudflare Dashboard → **Workers & Pages** → `komacook` → **Settings** → **Variables and Secrets** を開く。
-
-Variable として次を追加する。
+`wrangler.jsonc` の Variable として次を設定し、`main` をデプロイする。
 
 ```text
 APP_DATA_BACKEND = d1
 ```
 
-Secret ではなく Variable を使う。保存後、Worker を再デプロイする。
+`keep_vars: true` はダッシュボードで登録した他のVariableをコードの再デプロイ時にも保持するための設定である。切替後は最新のデプロイのバインディングに `APP_DATA_BACKEND` が含まれることを確認する。
 
 ## 5. 公開直後の確認
 
@@ -59,6 +57,6 @@ Secret ではなく Variable を使う。保存後、Worker を再デプロイ�
 
 ## ロールバック
 
-重大な不具合が出たら、Cloudflareの `APP_DATA_BACKEND` を削除または `supabase` に変更し、Workerを再デプロイする。Supabase Auth は維持され、切替前のSupabaseデータも削除していないため、アプリデータの参照先を戻せる。
+重大な不具合が出たら、Cloudflareの `APP_DATA_BACKEND` を `supabase` に変更して再デプロイする。その後、`wrangler.jsonc` の値も `supabase` に変更してコミットする。Supabase Auth は維持され、切替前のSupabaseデータも削除していないため、アプリデータの参照先を戻せる。
 
 切替後に作成されたD1データはSupabaseへ自動的には戻らない。公開直後は、書き込みを伴う大規模な告知やデータ削除を行わず、基本操作を確認してから通常運用へ移る。

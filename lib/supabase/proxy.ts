@@ -21,11 +21,12 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims?.sub);
   const pathname = request.nextUrl.pathname;
+  const useD1AdminData = usesD1AppData() || pathname === "/admin/cutover-check";
   const unavailableAllowed = ["/account-unavailable", "/auth/signout", "/auth/callback", "/contact", "/terms", "/privacy", "/guidelines"].some((path) => pathname.startsWith(path));
   let profile: { account_status: string; onboarding_completed: boolean } | null = null;
   if (signedIn && !unavailableAllowed) {
     const userId = String(data?.claims?.sub);
-    if (usesD1AppData()) {
+    if (useD1AdminData) {
       const db = await getD1Database();
       profile = await db.prepare("SELECT account_status, onboarding_completed FROM profiles WHERE user_id = ?").bind(userId).first<{ account_status: string; onboarding_completed: boolean }>();
     } else {
@@ -56,7 +57,7 @@ export async function updateSession(request: NextRequest) {
   }
   if (signedIn && request.nextUrl.pathname.startsWith("/admin")) {
     const userId = String(data?.claims?.sub);
-    const role = usesD1AppData()
+    const role = useD1AdminData
       ? await (await getD1Database()).prepare("SELECT role FROM user_roles WHERE user_id = ? AND role = 'admin'").bind(userId).first()
       : (await supabase.from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle()).data;
     if (!role) {
