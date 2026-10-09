@@ -50,6 +50,11 @@ export default function MyRecipesPage() {
         setCategories(payload.categories ?? []);
         setSavedRecipeIds(new Set(payload.savedRecipeIds ?? []));
         setRecipes(payload.recipes ?? []);
+        // 作成済みが下書きだけの場合、「自分のレシピ」初期タブでは0件に
+        // 見える。URLで明示指定されていないときは、実データのある下書きを開く。
+        if (!requestedTabId && !(payload.recipes ?? []).some((recipe) => recipe.tab === "mine") && (payload.recipes ?? []).some((recipe) => recipe.tab === "drafts")) {
+          setActiveTab("drafts");
+        }
       } catch (error) {
         if (!cancelled) setActionStatus(error instanceof Error ? error.message : "マイレシピを読み込めませんでした。");
       } finally {
