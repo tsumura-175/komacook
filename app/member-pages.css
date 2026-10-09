@@ -91,17 +91,16 @@
 .recipe-image-error, .recipe-image-removed { margin: var(--space-3) 0 0; font-size: var(--text-label); line-height: 1.6; }
 .recipe-image-error { color: var(--color-danger); }
 .recipe-image-removed { color: var(--color-ink-soft); }
-.editor-save-panel { position: sticky; top: calc(4.5rem + var(--space-4)); padding: var(--space-5); border: var(--rule-fine) solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-soft); }
-.save-status { display: flex; align-items: flex-start; gap: var(--space-3); }
-.save-status > .svg-inline--fa { margin-top: var(--space-1); color: var(--color-leaf-dark); }
+.editor-save-panel { position: sticky; top: calc(4.5rem + var(--space-4)); display: grid; gap: var(--space-3); padding: var(--space-6); border: var(--rule-fine) solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-soft); }
+.save-status { display: flex; align-items: center; gap: var(--space-3); padding-bottom: var(--space-4); border-bottom: var(--rule-fine) solid var(--color-border); }
+.save-status > .svg-inline--fa { flex: 0 0 auto; color: var(--color-leaf-dark); }
 .save-status.is-error > .svg-inline--fa, .save-status.is-conflict > .svg-inline--fa { color: var(--color-danger); }
 .save-status.is-saving > .svg-inline--fa { color: var(--color-coral-dark); }
-.save-status > span { display: grid; gap: var(--space-1); }
+.save-status > span { min-width: 0; display: grid; gap: var(--space-1); }
+.save-status strong { line-height: 1.2; }
 .save-status small { color: var(--color-ink-soft); font-size: var(--text-caption); line-height: 1.5; }
-.editor-summary { margin: var(--space-5) 0; padding: var(--space-4) 0; border-top: var(--rule-fine) solid var(--color-border); border-bottom: var(--rule-fine) solid var(--color-border); }
-.editor-summary p { display: flex; justify-content: space-between; gap: var(--space-3); margin: 0; padding: var(--space-2) 0; font-size: var(--text-label); }
-.editor-summary span { color: var(--color-ink-soft); }
-.editor-save-panel .primary-action { margin-top: var(--space-3); }
+.editor-save-panel .full-action { min-height: calc(var(--control-height-lg) + var(--space-2)); }
+.editor-save-panel .outline-action:last-child { margin-top: var(--space-2); }
 
 /* My recipes */
 .member-tabs { display: flex; align-items: center; gap: var(--space-2); overflow-x: auto; padding-bottom: var(--space-1); scrollbar-width: none; }
