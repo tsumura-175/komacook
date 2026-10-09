@@ -9,7 +9,10 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "main": "vinext/server/fetch-handler",
+  // Cloudflare の Git 連携デプロイでは build 完了後にこの設定を読む。
+  // 汎用の vinext fetch handler ではなく、ビルドごとに生成される Worker を
+  // 配置しないと、Server Action が参照する遅延読み込みチャンクとずれる。
+  "main": "dist/server/index.js",
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
