@@ -4,7 +4,7 @@ import { parseRecipeQuantity } from "./recipe-editor";
 import { getD1Database, isSafeImageKey } from "./d1-bindings";
 import { deleteR2Images, moveR2Image } from "./r2-images";
 
-type SaveIntent = "autosave" | "draft" | "publish";
+type SaveIntent = "save" | "draft" | "publish";
 type ValidRecipeInput = Omit<RecipeInput, "servings" | "time" | "calories"> & { servings: number; time: number | ""; calories: number | "" };
 type ExistingRecipe = { image_key: string | null; lock_version: number; status: "draft" | "published" | "deleted"; published_at: string | null };
 type ExistingStep = { image_key: string | null };

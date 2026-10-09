@@ -11,12 +11,10 @@ import { Dialog } from "../../components/dialog";
 import { RecipeImageField, type RecipeImageFieldHandle } from "../../components/recipe-image-field";
 import { RecipeStepImageField, type RecipeStepImageFieldHandle } from "../../components/recipe-step-image-field";
 import { moveRecipeRow, RECIPE_UNIT_SUGGESTIONS, savedTimeLabel } from "../../../lib/recipe-editor";
-import { localPublishedDraftKey, readLocalPublishedDraft, type LocalPublishedDraft } from "../../../lib/recipe-editor-draft";
 import { moveRecipeToTrash, saveRecipe, type RecipeInput } from "../actions";
 
 type IngredientRow = { id: number; name: string; quantity: string; unit: string; note: string; group: string };
 type StepRow = { id: number; text: string; imagePath: string | null; imageUrl: string | null };
-type ChangeState = { revision: number; immediate: boolean };
 type SavePhase = "idle" | "saving" | "saved" | "error" | "conflict";
 type RecipePreview = RecipeInput & { categoryName: string };
 
@@ -51,8 +49,6 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
   const imageDirtyRef = useRef(false);
   const stepImageDirtyRef = useRef(false);
   const saveInFlightRef = useRef(false);
-  const saveQueuedRef = useRef(false);
-  const latestRevisionRef = useRef(0);
 
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [savedId, setSavedId] = useState(mode === "edit" ? params.id ?? "" : "");
@@ -60,30 +56,27 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null);
   const [ingredients, setIngredients] = useState<IngredientRow[]>(initialIngredients);
   const [steps, setSteps] = useState<StepRow[]>(initialSteps);
-  const [changeState, setChangeState] = useState<ChangeState>({ revision: 0, immediate: false });
   const [savePhase, setSavePhase] = useState<SavePhase>("idle");
-  const [status, setStatus] = useState("入力内容は最終変更から30秒後に自動保存されます");
+  const [status, setStatus] = useState("保存するまで変更は反映されません");
   const [preview, setPreview] = useState<RecipePreview | null>(null);
   const [registered, setRegistered] = useState(false);
   const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const markDirty = useCallback((immediate = false) => {
+  const markDirty = useCallback(() => {
     dirtyRef.current = true;
     setSavePhase("idle");
     setStatus("未保存の変更があります");
-    setChangeState((current) => {
-      const next = { revision: current.revision + 1, immediate };
-      latestRevisionRef.current = next.revision;
-      return next;
-    });
   }, []);
 
   useEffect(() => {
     if (!clientIdRef.current) clientIdRef.current = crypto.randomUUID();
     let cancelled = false;
     async function loadFormData() {
+      // 動的URLのIDはクライアント初期化直後に未確定のことがある。
+      // この状態で「対象なし」と判断すると、下書き一覧へ誤って戻してしまう。
+      if (mode === "edit" && !params.id) return;
       const url = mode === "edit" && params.id ? `/api/recipe-editor?id=${encodeURIComponent(params.id)}` : "/api/recipe-editor";
       const response = await fetch(url, { cache: "no-store" });
       const payload = await response.json() as { categories?: Array<{ id: string; name: string }>; recipe?: LoadedRecipe | null; error?: string };
@@ -101,34 +94,17 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
       lockVersionRef.current = Number(recipe.lock_version ?? 1);
       currentStatusRef.current = recipe.status;
       setSavedId(recipe.id);
-      const localDraft = recipe.status === "published" ? readLocalPublishedDraft(recipe) : null;
-      const displayedRecipe = localDraft ? {
-        ...recipe,
-        title: localDraft.input.title,
-        description: localDraft.input.description,
-        base_servings: localDraft.input.servings,
-        category_id: localDraft.input.categoryId,
-        cooking_time_minutes: localDraft.input.time,
-        calories_per_serving: localDraft.input.calories,
-        visibility: localDraft.input.visibility,
-        allergy_notes: localDraft.input.allergy,
-        recipe_tags: localDraft.input.tags.split(/[、,]/).map((name) => ({ tags: { name: name.trim() } })).filter((item) => item.tags.name),
-      } : recipe;
-      const displayedIngredients: IngredientRow[] = localDraft
-        ? localDraft.input.ingredients.map((item) => ({ id: nextRowIdRef.current++, ...item }))
-        : recipe.recipe_ingredients.toSorted((a, b) => Number(a.sort_order) - Number(b.sort_order)).map((item) => ({
+      const displayedIngredients: IngredientRow[] = recipe.recipe_ingredients.toSorted((a, b) => Number(a.sort_order) - Number(b.sort_order)).map((item) => ({
           id: nextRowIdRef.current++, name: String(item.name), quantity: String(item.quantity_display ?? item.quantity_text ?? item.quantity_value ?? ""), unit: String(item.unit ?? ""), note: String(item.note ?? ""), group: String(item.group_name ?? ""),
         }));
-      const displayedSteps: StepRow[] = localDraft
-        ? localDraft.input.steps.map((step) => ({ id: nextRowIdRef.current++, text: step.instruction, imagePath: step.imagePath ?? null, imageUrl: null }))
-        : recipe.recipe_steps.toSorted((a, b) => Number(a.sort_order) - Number(b.sort_order)).map((item) => ({ id: nextRowIdRef.current++, text: String(item.instruction), imagePath: typeof item.image_path === "string" ? item.image_path : null, imageUrl: typeof item.image_url === "string" ? item.image_url : null }));
+      const displayedSteps: StepRow[] = recipe.recipe_steps.toSorted((a, b) => Number(a.sort_order) - Number(b.sort_order)).map((item) => ({ id: nextRowIdRef.current++, text: String(item.instruction), imagePath: typeof item.image_path === "string" ? item.image_path : null, imageUrl: typeof item.image_url === "string" ? item.image_url : null }));
       setIngredients(displayedIngredients.length ? displayedIngredients : [{ id: nextRowIdRef.current++, name: "", quantity: "", unit: "g", note: "", group: "" }]);
       setSteps(displayedSteps.length ? displayedSteps : [{ id: nextRowIdRef.current++, text: "", imagePath: null, imageUrl: null }]);
       if (!cancelled) setInitialImageUrl(typeof recipe.image_url === "string" ? recipe.image_url : null);
       if (!cancelled) {
-        setInitialRecipe(displayedRecipe);
+        setInitialRecipe(recipe);
         setSavePhase("saved");
-        setStatus(localDraft ? `この端末の編集内容を復元しました ${savedTimeLabel(localDraft.savedAt)}` : `保存済み ${savedTimeLabel(String(recipe.updated_at))}`);
+        setStatus(`保存済み ${savedTimeLabel(String(recipe.updated_at))}`);
       }
     }
     void loadFormData();
@@ -155,30 +131,16 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
     };
   }, [ingredients, steps]);
 
-  const persist = useCallback(async (intent: "autosave" | "draft" | "publish", input?: RecipeInput, revision = latestRevisionRef.current) => {
+  const persist = useCallback(async (intent: "save" | "draft" | "publish", input?: RecipeInput) => {
     if (!formRef.current || conflictOpen) return false;
-    if (saveInFlightRef.current) {
-      saveQueuedRef.current = true;
-      return false;
-    }
+    if (saveInFlightRef.current) return false;
     saveInFlightRef.current = true;
     setSaving(true);
     setSavePhase("saving");
-    setStatus(intent === "autosave" ? "自動保存中…" : "保存中…");
+    setStatus("保存中…");
     const payload = new FormData(formRef.current);
     const recipeInput = input ?? buildInput(formRef.current);
     try {
-      if (intent === "autosave" && recipeInput.id && recipeInput.currentStatus === "published") {
-        const savedAt = new Date().toISOString();
-        const localDraft: LocalPublishedDraft = { version: 1, savedAt, input: recipeInput };
-        window.localStorage.setItem(localPublishedDraftKey(recipeInput.id), JSON.stringify(localDraft));
-        if (revision === latestRevisionRef.current && !imageDirtyRef.current && !stepImageDirtyRef.current) dirtyRef.current = false;
-        setSavePhase(imageDirtyRef.current || stepImageDirtyRef.current ? "idle" : "saved");
-        setStatus(imageDirtyRef.current || stepImageDirtyRef.current
-          ? `文字はこの端末に保存済み ${savedTimeLabel(savedAt)}（写真は確認後に保存）`
-          : `この端末に自動保存済み ${savedTimeLabel(savedAt)}（公開内容は未変更）`);
-        return true;
-      }
       // フィールド自身が未変更なら何もしない。親側の表示状態に依存させない。
       await recipeImageRef.current?.stageSource(payload);
       await Promise.all([...stepImageRefs.current.values()].map((field) => field.stageSource(payload)));
@@ -195,10 +157,9 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
       stepImageRefs.current.forEach((field) => field.markPersisted());
       imageDirtyRef.current = false;
       stepImageDirtyRef.current = false;
-      if (intent === "draft" || (!recipeInput.id && intent === "autosave")) currentStatusRef.current = "draft";
+      if (intent === "draft") currentStatusRef.current = "draft";
       if (intent === "publish") currentStatusRef.current = "published";
-      if (intent === "publish" && result.id) window.localStorage.removeItem(localPublishedDraftKey(result.id));
-      if (revision === latestRevisionRef.current) dirtyRef.current = false;
+      dirtyRef.current = false;
       setSavePhase("saved");
       setStatus(`保存済み ${savedTimeLabel(result.savedAt ?? new Date())}`);
       if (intent === "publish") { setRegistered(true); router.refresh(); }
@@ -212,36 +173,20 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
       await Promise.all([...stepImageRefs.current.values()].map((field) => field.discardStagedSource()));
       saveInFlightRef.current = false;
       setSaving(false);
-      if (saveQueuedRef.current) {
-        saveQueuedRef.current = false;
-        setChangeState((current) => {
-          const next = { revision: current.revision + 1, immediate: true };
-          latestRevisionRef.current = next.revision;
-          return next;
-        });
-      }
     }
   }, [buildInput, conflictOpen, router]);
 
   useEffect(() => {
-    if (!initialRecipe || !dirtyRef.current || conflictOpen || preview) return;
-    const timer = window.setTimeout(() => { void persist("autosave", undefined, changeState.revision); }, changeState.immediate ? 0 : 30000);
-    return () => window.clearTimeout(timer);
-  }, [changeState, conflictOpen, initialRecipe, persist, preview]);
-
-  useEffect(() => {
-    function saveBeforeLeaving() { if (document.visibilityState === "hidden" && dirtyRef.current && !saveInFlightRef.current) void persist("autosave"); }
     function warnBeforeLeaving(event: BeforeUnloadEvent) { if (dirtyRef.current) event.preventDefault(); }
-    document.addEventListener("visibilitychange", saveBeforeLeaving);
     window.addEventListener("beforeunload", warnBeforeLeaving);
-    return () => { document.removeEventListener("visibilitychange", saveBeforeLeaving); window.removeEventListener("beforeunload", warnBeforeLeaving); };
-  }, [persist]);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, []);
 
   function addIngredient() {
     setIngredients((rows) => [...rows, { id: nextRowIdRef.current++, name: "", quantity: "", unit: "g", note: "", group: "" }]);
-    markDirty(true);
+    markDirty();
   }
-  function addStep() { setSteps((rows) => [...rows, { id: nextRowIdRef.current++, text: "", imagePath: null, imageUrl: null }]); markDirty(true); }
+  function addStep() { setSteps((rows) => [...rows, { id: nextRowIdRef.current++, text: "", imagePath: null, imageUrl: null }]); markDirty(); }
 
   function submitRecipe(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -260,7 +205,7 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
     <SiteHeader />
     <main className="member-page-main recipe-editor-main">
       <header className="member-page-heading"><div><h1>{mode === "edit" ? "レシピを編集" : "レシピを登録"}</h1><p>{mode === "edit" ? "分量や手順を見直して、いつもの味を更新します。" : "作った味を、次も同じように作れる形で残します。"}</p></div></header>
-      {initialRecipe === null ? <p className="search-page-loading">レシピを読み込んでいます</p> : <form ref={formRef} className="recipe-editor-layout" onInput={() => markDirty(false)} onSubmit={submitRecipe}>
+      {initialRecipe === null ? <p className="search-page-loading">レシピを読み込んでいます</p> : <form ref={formRef} className="recipe-editor-layout" onInput={markDirty} onSubmit={submitRecipe}>
         <div className="editor-sections">
           <section className="form-panel" aria-labelledby="basic-title">
             <div className="form-panel-heading"><span>1</span><div><h2 id="basic-title">基本情報</h2><p>料理名や基準人数を入力します。</p></div></div>
@@ -286,9 +231,9 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
               <label><span>単位</span><input list="recipe-unit-suggestions" value={row.unit} maxLength={30} onChange={(event) => updateIngredient(row.id, "unit", event.target.value)} placeholder="自由入力可" /></label>
               <label><span>補足</span><input value={row.note} maxLength={200} onChange={(event) => updateIngredient(row.id, "note", event.target.value)} placeholder="お好みで" /></label>
               <div className="row-actions" aria-label={`${index + 1}番目の材料の操作`}>
-                <button type="button" aria-label={`${index + 1}番目の材料を上へ移動`} disabled={index === 0} onClick={() => { setIngredients((rows) => moveRecipeRow(rows, index, -1)); markDirty(true); }}><FontAwesomeIcon icon={faArrowUp} /></button>
-                <button type="button" aria-label={`${index + 1}番目の材料を下へ移動`} disabled={index === ingredients.length - 1} onClick={() => { setIngredients((rows) => moveRecipeRow(rows, index, 1)); markDirty(true); }}><FontAwesomeIcon icon={faArrowDown} /></button>
-                <button type="button" aria-label={`${index + 1}番目の材料を削除`} disabled={ingredients.length === 1} onClick={() => { setIngredients((rows) => rows.filter((item) => item.id !== row.id)); markDirty(true); }}><FontAwesomeIcon icon={faTrashCan} /></button>
+                <button type="button" aria-label={`${index + 1}番目の材料を上へ移動`} disabled={index === 0} onClick={() => { setIngredients((rows) => moveRecipeRow(rows, index, -1)); markDirty(); }}><FontAwesomeIcon icon={faArrowUp} /></button>
+                <button type="button" aria-label={`${index + 1}番目の材料を下へ移動`} disabled={index === ingredients.length - 1} onClick={() => { setIngredients((rows) => moveRecipeRow(rows, index, 1)); markDirty(); }}><FontAwesomeIcon icon={faArrowDown} /></button>
+                <button type="button" aria-label={`${index + 1}番目の材料を削除`} disabled={ingredients.length === 1} onClick={() => { setIngredients((rows) => rows.filter((item) => item.id !== row.id)); markDirty(); }}><FontAwesomeIcon icon={faTrashCan} /></button>
               </div>
             </div>)}</div>
             <button className="add-row-button" type="button" onClick={addIngredient}><FontAwesomeIcon icon={faPlus} />材料を追加</button>
@@ -297,25 +242,24 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
             <div className="form-panel-heading"><span>3</span><div><h2 id="steps-form-title">作り方</h2><p>工程ごとに写真を1枚追加でき、上下ボタンで並べ替えられます。</p></div></div>
             <div className="dynamic-list">{steps.map((step, index) => <div className="step-form-row" key={step.id}>
               <span className="row-number">{index + 1}</span><label><span className="sr-only">工程{index + 1}</span><textarea rows={3} maxLength={2000} value={step.text} onChange={(event) => setSteps((rows) => rows.map((item) => item.id === step.id ? { ...item, text: event.target.value } : item))} placeholder="材料を切る、炒めるなどの手順を入力" /></label>
-              <RecipeStepImageField rowId={step.id} initialImageUrl={step.imageUrl} ref={(field) => { if (field) stepImageRefs.current.set(step.id, field); else stepImageRefs.current.delete(step.id); }} onChange={() => { stepImageDirtyRef.current = true; markDirty(true); }} />
+              <RecipeStepImageField rowId={step.id} initialImageUrl={step.imageUrl} ref={(field) => { if (field) stepImageRefs.current.set(step.id, field); else stepImageRefs.current.delete(step.id); }} onChange={() => { stepImageDirtyRef.current = true; markDirty(); }} />
               <div className="row-actions" aria-label={`${index + 1}番目の工程の操作`}>
-                <button type="button" aria-label={`${index + 1}番目の工程を上へ移動`} disabled={index === 0} onClick={() => { setSteps((rows) => moveRecipeRow(rows, index, -1)); markDirty(true); }}><FontAwesomeIcon icon={faArrowUp} /></button>
-                <button type="button" aria-label={`${index + 1}番目の工程を下へ移動`} disabled={index === steps.length - 1} onClick={() => { setSteps((rows) => moveRecipeRow(rows, index, 1)); markDirty(true); }}><FontAwesomeIcon icon={faArrowDown} /></button>
-                <button type="button" aria-label={`${index + 1}番目の工程を削除`} disabled={steps.length === 1} onClick={() => { stepImageDirtyRef.current ||= Boolean(step.imagePath); stepImageRefs.current.delete(step.id); setSteps((rows) => rows.filter((item) => item.id !== step.id)); markDirty(true); }}><FontAwesomeIcon icon={faTrashCan} /></button>
+                <button type="button" aria-label={`${index + 1}番目の工程を上へ移動`} disabled={index === 0} onClick={() => { setSteps((rows) => moveRecipeRow(rows, index, -1)); markDirty(); }}><FontAwesomeIcon icon={faArrowUp} /></button>
+                <button type="button" aria-label={`${index + 1}番目の工程を下へ移動`} disabled={index === steps.length - 1} onClick={() => { setSteps((rows) => moveRecipeRow(rows, index, 1)); markDirty(); }}><FontAwesomeIcon icon={faArrowDown} /></button>
+                <button type="button" aria-label={`${index + 1}番目の工程を削除`} disabled={steps.length === 1} onClick={() => { stepImageDirtyRef.current ||= Boolean(step.imagePath); stepImageRefs.current.delete(step.id); setSteps((rows) => rows.filter((item) => item.id !== step.id)); markDirty(); }}><FontAwesomeIcon icon={faTrashCan} /></button>
               </div>
             </div>)}</div>
             <button className="add-row-button" type="button" onClick={addStep}><FontAwesomeIcon icon={faPlus} />工程を追加</button>
           </section>
           <section className="form-panel" aria-labelledby="notes-form-title">
             <div className="form-panel-heading"><span>4</span><div><h2 id="notes-form-title">完成写真・注意事項</h2><p>料理の完成写真を1枚登録できます。</p></div></div>
-            <RecipeImageField ref={recipeImageRef} initialImageUrl={initialImageUrl} onChange={() => { imageDirtyRef.current = true; markDirty(true); }} />
+            <RecipeImageField ref={recipeImageRef} initialImageUrl={initialImageUrl} onChange={() => { imageDirtyRef.current = true; markDirty(); }} />
             <label className="form-field"><span>アレルギー・注意事項</span><textarea name="allergy" rows={3} maxLength={2000} defaultValue={String(initialRecipe.allergy_notes ?? "")} placeholder="例：しょうゆには大豆・小麦が含まれます" /></label>
           </section>
         </div>
         <aside className="editor-save-panel">
-          <div className={`save-status is-${savePhase}`}><FontAwesomeIcon icon={saveStatusIcon} spin={savePhase === "saving"} /><span><strong>下書き保存</strong><small aria-live="polite">{status}</small></span></div>
-          <div className="editor-summary"><p><span>自動保存</span><strong>変更後30秒</strong></p><p><span>競合防止</span><strong>有効</strong></p></div>
-          <button className="outline-action full-action" type="button" disabled={saving} onClick={() => { if (formRef.current) void persist(currentStatusRef.current === "published" ? "autosave" : "draft", buildInput(formRef.current)); }}>{saving ? "保存中…" : initialRecipe.status === "published" ? "今すぐ端末に保存" : "今すぐ下書き保存"}</button>
+          <div className={`save-status is-${savePhase}`}><FontAwesomeIcon icon={saveStatusIcon} spin={savePhase === "saving"} /><span><strong>保存状態</strong><small aria-live="polite">{status}</small></span></div>
+          <button className="outline-action full-action" type="button" disabled={saving} onClick={() => { if (formRef.current) void persist(currentStatusRef.current === "published" ? "save" : "draft", buildInput(formRef.current)); }}>{saving ? "保存中…" : initialRecipe.status === "published" ? "変更を保存" : "下書きを保存"}</button>
           <button className="primary-action full-action" type="submit" disabled={saving}>{mode === "edit" ? "変更内容を確認" : "入力内容を確認"} <FontAwesomeIcon icon={faChevronRight} /></button>
           {mode === "edit" && savedId ? <button className="outline-action full-action" type="button" disabled={saving} onClick={() => setTrashConfirmOpen(true)}><FontAwesomeIcon icon={faTrashCan} />ゴミ箱に移す</button> : null}
         </aside>

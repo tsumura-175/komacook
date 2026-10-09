@@ -13,16 +13,17 @@ async function fillRequiredRecipe(page: Page, title: string) {
 }
 
 test.describe("レシピのライフサイクル", () => {
-  test("下書きを自動保存し、別タブ更新との競合を検知する", async ({ page, context }) => {
+  test("下書きを手動保存し、別タブ更新との競合を検知する", async ({ page, context }) => {
     test.setTimeout(70_000);
     const member = await createMember({ displayName: "下書き競合テスト会員" });
-    const title = uniqueValue("自動保存レシピ");
+    const title = uniqueValue("手動保存レシピ");
     const admin = adminClient();
     try {
       await login(page, member.email, member.password);
       await page.goto("/recipes/new");
       await fillRequiredRecipe(page, title);
       await expect(page.getByText("未保存の変更があります")).toBeVisible();
+      await page.getByRole("button", { name: "下書きを保存" }).click();
       await expect.poll(async () => {
         const result = await admin.from("recipes").select("id,status,lock_version").eq("owner_user_id", member.user.id).eq("title", title).maybeSingle();
         return result.data;
@@ -35,11 +36,11 @@ test.describe("レシピのライフサイクル", () => {
       await expect(secondPage.locator('input[name="title"]')).toHaveValue(title);
       await page.goto(`/recipes/${recipeId}/edit`);
       await page.locator('textarea[name="description"]').fill("先に保存した内容");
-      await page.getByRole("button", { name: "今すぐ下書き保存" }).click();
+      await page.getByRole("button", { name: "下書きを保存" }).click();
       await expect(page.getByText(/保存済み/)).toBeVisible();
 
       await secondPage.locator('textarea[name="description"]').fill("古い画面からの更新");
-      await secondPage.getByRole("button", { name: "今すぐ下書き保存" }).click();
+      await secondPage.getByRole("button", { name: "下書きを保存" }).click();
       await expect(secondPage.getByRole("alertdialog", { name: "別の画面で更新されています" })).toBeVisible();
       const persisted = await admin.from("recipes").select("description").eq("id", recipeId).single();
       expect(persisted.data?.description).toBe("先に保存した内容");

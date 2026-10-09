@@ -67,7 +67,7 @@ function refreshRecipePages(recipeId?: string) {
   if (recipeId) revalidatePath(`/recipes/${recipeId}`);
 }
 
-export async function saveRecipe(input: RecipeInput, intent: "autosave" | "draft" | "publish", imageData?: FormData): Promise<MutationResult> {
+export async function saveRecipe(input: RecipeInput, intent: "save" | "draft" | "publish", imageData?: FormData): Promise<MutationResult> {
   const parsed = recipeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "必須項目、材料、作り方の入力内容を確認してください。" };
   const { supabase, user } = await authenticatedClient();

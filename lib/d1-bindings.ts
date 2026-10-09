@@ -24,5 +24,5 @@ export async function getImageBucket() {
 
 export function isSafeImageKey(value: string) {
   // R2のキーをURL入力から受け取るため、パス横断・制御文字・任意拡張子を拒否する。
-  return /^[0-9a-f-]{36}\/(?:avatar-[0-9a-f-]{36}|[0-9a-f-]{36}(?:\/steps\/[0-9a-f-]{36})?|staging\/[0-9a-f-]{36})\.webp$/i.test(value);
+  return /^[0-9a-f-]{36}\/(?:avatar-[0-9a-f-]{36}|staging\/[0-9a-f-]{36}|[0-9a-f-]{36}\/[0-9a-f-]{36}|[0-9a-f-]{36}\/steps\/[0-9a-f-]{36})\.webp$/i.test(value);
 }
