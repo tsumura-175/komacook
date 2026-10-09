@@ -88,7 +88,7 @@ function OnboardingFormClient({ userId, initialProfile, confirmedEmail }: Props)
         router.push("/");
         router.refresh();
       } catch {
-        setError("画像を処理できませんでした。別の画像でもう一度お試しください。");
+        setError("初回設定を完了できませんでした。時間をおいてもう一度お試しください。");
       }
     });
   }

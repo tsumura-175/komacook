@@ -5,7 +5,7 @@ import { normalizeAvatarImage } from "../../lib/avatar-image";
 import { getAuthCallbackUrl } from "../../lib/site-url";
 import { createAdminClient } from "../../lib/supabase/admin";
 import { createClient } from "../../lib/supabase/server";
-import { ensureD1Profile, replaceD1Avatar, updateD1Profile } from "../../lib/d1-profiles";
+import { ensureD1Profile, replaceD1Avatar, updateD1Profile, type D1Profile } from "../../lib/d1-profiles";
 import { deleteR2Images, putR2Image } from "../../lib/r2-images";
 import { usesD1AppData } from "../../lib/d1-bindings";
 
@@ -81,8 +81,17 @@ export async function completeOnboarding(formData: FormData): Promise<Onboarding
 
   if (usesD1AppData()) {
     const value = parsed.data;
+    if (value.familyPublic === "public" && value.adults === "" && value.children === "") {
+      return { ok: false, error: "家族構成を公開する場合は、大人または子どもの人数を入力してください。" };
+    }
     const fallbackName = String(user.user_metadata.full_name ?? user.user_metadata.name ?? "").trim();
-    const currentProfile = await ensureD1Profile(user.id, fallbackName || "こまクックユーザー");
+    let currentProfile: D1Profile | null;
+    try {
+      currentProfile = await ensureD1Profile(user.id, fallbackName || "こまクックユーザー");
+    } catch (error) {
+      console.error("Failed to prepare D1 onboarding profile", error);
+      return { ok: false, error: "初回設定を準備できませんでした。時間をおいて再度お試しください。" };
+    }
     if (!currentProfile || currentProfile.account_status !== "active") return { ok: false, error: currentProfile?.account_status === "deletion_pending" ? "このアカウントは退会処理中です。" : "このアカウントは現在利用停止中です。" };
     const hasConfirmedEmail = Boolean(user.email && user.email_confirmed_at);
     if (!hasConfirmedEmail && !value.contactEmail) return { ok: false, error: "連絡用メールアドレスを入力してください。" };
@@ -102,9 +111,15 @@ export async function completeOnboarding(formData: FormData): Promise<Onboarding
       const { error: emailError } = await supabase.auth.updateUser({ email: value.contactEmail }, { emailRedirectTo: getAuthCallbackUrl("/onboarding") });
       if (emailError) { if (uploadedKey) await deleteR2Images([uploadedKey]); return { ok: false, error: "確認メールを送信できませんでした。別のメールアドレスを確認してください。" }; }
     }
-    const saved = await updateD1Profile(user.id, { displayName: value.displayName, servings: value.servings, adults: value.adults === "" ? null : value.adults, children: value.children === "" ? null : value.children, showFamily: value.familyPublic === "public", avatarKind: value.avatarMode, presetAvatarKey: value.presetAvatarKey, avatarColor: value.avatarColor, avatarKey, onboardingCompleted: hasConfirmedEmail });
-    if (!saved) { if (uploadedKey) await deleteR2Images([uploadedKey]); return { ok: false, error: "初回設定を保存できませんでした。" }; }
-    await replaceD1Avatar(user.id, currentProfile.avatar_key, avatarKey);
+    try {
+      const saved = await updateD1Profile(user.id, { displayName: value.displayName, servings: value.servings, adults: value.adults === "" ? null : value.adults, children: value.children === "" ? null : value.children, showFamily: value.familyPublic === "public", avatarKind: value.avatarMode, presetAvatarKey: value.presetAvatarKey, avatarColor: value.avatarColor, avatarKey, onboardingCompleted: hasConfirmedEmail });
+      if (!saved) { if (uploadedKey) await deleteR2Images([uploadedKey]); return { ok: false, error: "初回設定を保存できませんでした。" }; }
+      await replaceD1Avatar(user.id, currentProfile.avatar_key, avatarKey);
+    } catch (error) {
+      console.error("Failed to save D1 onboarding profile", error);
+      if (uploadedKey) await deleteR2Images([uploadedKey]);
+      return { ok: false, error: "初回設定を保存できませんでした。時間をおいて再度お試しください。" };
+    }
     return { ok: true, confirmationRequired: !hasConfirmedEmail };
   }
 
