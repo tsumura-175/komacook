@@ -6,5 +6,5 @@ import { BrandMark } from "./site-shell";
 import { OnboardingReturnButton } from "./onboarding-return-button";
 
 export function LegalPage({ title, updated = "2026年8月16日", children, returnToOnboarding = false }: { title: string; updated?: string; children: ReactNode; returnToOnboarding?: boolean }) {
-  return <main className="auth-document">{returnToOnboarding ? <OnboardingReturnButton /> : <Link className="auth-home-link" href="/"><FontAwesomeIcon icon={faArrowLeft} />ホームへ戻る</Link>}<header><div className="auth-brand"><BrandMark /><span>こまクック</span></div><h1>{title}</h1><p>最終更新日：{updated}</p></header>{children}</main>;
+  return <main className="auth-document">{!returnToOnboarding ? <Link className="auth-home-link" href="/"><FontAwesomeIcon icon={faArrowLeft} />ホームへ戻る</Link> : null}<header><div className="auth-brand"><BrandMark /><span>こまクック</span></div><h1>{title}</h1><p>最終更新日：{updated}</p></header>{children}{returnToOnboarding ? <OnboardingReturnButton /> : null}</main>;
 }

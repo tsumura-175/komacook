@@ -17,5 +17,8 @@ export function OnboardingReturnButton() {
     }, 200);
   }
 
-  return <button className="auth-home-link" type="button" onClick={returnToOnboarding}><FontAwesomeIcon icon={faArrowLeft} />初回設定に戻る</button>;
+  return <section className="onboarding-return" aria-label="初回設定へ戻る">
+    <p>内容を確認できたら、初回設定の最終確認へ戻ります。</p>
+    <button type="button" onClick={returnToOnboarding}><span className="onboarding-return-icon"><FontAwesomeIcon icon={faArrowLeft} /></span><span><strong>初回設定に戻る</strong><small>最終確認を続ける</small></span></button>
+  </section>;
 }
