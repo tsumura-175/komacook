@@ -2,10 +2,11 @@
 
 ## 公開前設定
 
-- Vercelへ`.env.example`の各値を登録する。`SUPABASE_SECRET_KEY`、`CRON_SECRET`、`CONTACT_RATE_LIMIT_SECRET`、SMTP認証情報はサーバー限定とする。
-- Supabase AuthでSite URL、Redirect URL、Google Provider、Manual Identity Linkingを本番ドメインに合わせる。
-- `NEXT_PUBLIC_SITE_URL`はHTTPSの本番URLとし、OGP、canonical、メールリンクの基準URLを一致させる。
-- Vercel CronまたはSupabase Cronの一方だけで日次メンテナンスを実行する。
+- Cloudflare Workersの公開Workerへ`NEXT_PUBLIC_SITE_URL`、Supabase公開値、`CONTACT_TO_EMAIL`、`REPORT_TO_EMAIL`を設定する。`SUPABASE_SECRET_KEY`、`CRON_SECRET`、`CONTACT_RATE_LIMIT_SECRET`はSecretとして設定する。
+- Supabase AuthでSite URL、Redirect URL、Google Provider、Manual Identity Linkingを`https://komacook.jp`に合わせる。
+- `NEXT_PUBLIC_SITE_URL`は`https://komacook.jp`とし、OGP、canonical、メールリンクの基準URLを統一する。
+- D1のマイグレーションとカテゴリマスタを反映する: `npm run d1:migrate:remote`、`npm run d1:seed:remote`。
+- `komacook-maintenance` WorkerのCronだけがメール送信・再送、R2掃除、退会削除を実行する。別のCronを追加しない。
 
 ## 公開判定
 
@@ -24,11 +25,11 @@ Previewでは未ログイン検索、メールログイン、画像登録、下�
 ## 監視
 
 - `GET /api/health`: 5分間隔を目安にHTTP 200を監視する。
-- Vercel: 5xx率、Function失敗、デプロイ失敗を確認する。
-- Supabase: DB容量、Storage容量、接続数を70%・85%・100%で確認する。
+- Cloudflare Workers: 5xx率、Worker例外、デプロイ失敗、Cron実行結果を確認する。
+- D1: 容量・エラー率、R2: 容量・画像取得失敗を確認する。
 - 管理画面: 未処理通報と管理対応を毎日確認する。
-- `contact_logs`: 問い合わせメールの送信失敗を確認する。
-- 日次Cron: レスポンスの`recipesFailed`、`failed`が0であることを確認する。
+- D1の`contact_logs`と`mail_outbox`: 問い合わせ受付失敗、送信失敗、再送回数を確認する。
+- メンテナンスWorker: 15分ごとの配信・掃除と毎日03:10 JSTの退会削除が成功していることを確認する。
 
 ## バックアップ・復旧
 
@@ -42,4 +43,4 @@ Previewでは未ログイン検索、メールログイン、画像登録、下�
 - DB障害: `/api/health`が503となる。更新操作を止め、復旧まで障害画面を案内する。
 - Storage障害: レシピ本文は継続表示し、画像なし表示へ縮退する。
 - メール障害: 公開閲覧は継続し、登録確認・再設定・問い合わせには再試行案内を表示する。
-- Cron失敗: 同じ処理は多重実行を考慮済み。原因解消後に`npm run maintenance:run`相当を一度実行する。
+- Cron失敗: 同じ処理は多重実行を考慮済み。CloudflareのCron実行ログとD1の`mail_outbox`を確認し、原因解消後に必要なメールだけ再キューする。

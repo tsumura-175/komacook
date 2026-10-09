@@ -58,11 +58,14 @@ CloudflareダッシュボードのSettings → Variables and Secretsに、Produc
 - `SUPABASE_SECRET_KEY`（Secret）
 - `CRON_SECRET`（Secret）
 - `CONTACT_RATE_LIMIT_SECRET`（Secret）
-- `RESEND_API_KEY`（Secret）
-- `EMAIL_FROM`（例: `こまクック <noreply@komacook.jp>`）
 - `CONTACT_TO_EMAIL`（`daiki.hayakawa.work@gmail.com`）
 - `REPORT_TO_EMAIL`（未設定時は`CONTACT_TO_EMAIL`を使用）
-- `EMAIL_DELIVERY_BACKEND=d1`（Variable。Cloudflare本番では必須）
+
+`APP_DATA_BACKEND=d1` のときは、公開WorkerがメールをD1の`mail_outbox`へ
+登録し、メンテナンスWorkerだけがResendへ送信する。したがって公開Workerに
+`RESEND_API_KEY`や`EMAIL_FROM`を重複設定する必要はない。`CONTACT_TO_EMAIL`、
+`REPORT_TO_EMAIL`などダッシュボードで設定するVariableは、`npm run deploy`が
+`keep_vars`付きで配置するため、以後のデプロイで保持される。
 
 `NEXT_PUBLIC_`以外、Supabaseの管理キー、Cloudflare API TokenはGitに置かない。
 
@@ -88,4 +91,6 @@ Workers Freeではネイティブ`sharp`を実行できない。完成写真・�
 
 ## 現時点の移行範囲
 
-Workersの実行基盤とD1/R2バインディング、D1の初期スキーマ、メール再送・一時画像掃除Workerは設定済みである。一方、既存のレシピ・管理・通知の本体はまだSupabase PostgreSQLのRPC/RLSに依存している。この段階でSupabaseのDBやStorageを停止するとアプリは壊れる。D1リポジトリ層とR2画像APIへの置換が完了するまで停止してはならない。
+アプリケーションデータはD1、ユーザー画像はR2を使用する。SupabaseはAuth
+（メール認証・Googleログイン）専用として継続するため、Supabase Authの設定は
+削除・停止しない。

@@ -1,5 +1,6 @@
 import "server-only";
 import { getCloudflareBindings } from "./cloudflare-bindings";
+import { usesD1AppData } from "./d1-bindings";
 
 export type TransactionalEmail = {
   to: string | string[];
@@ -48,7 +49,11 @@ export async function sendTransactionalEmail(message: TransactionalEmail) {
  */
 export async function queueTransactionalEmail(purpose: EmailPurpose, message: TransactionalEmail) {
   if (process.env.MAIL_DELIVERY_MODE === "disabled") return { id: "local-delivery-disabled", queued: false };
-  if (process.env.EMAIL_DELIVERY_BACKEND !== "d1") {
+  // D1をアプリデータの正とする本番では、公開Workerから外部メールを
+  // 直接送らない。設定値の欠落でメールが失われないよう、D1切替自体を
+  // キュー利用の判定にもする。
+  const shouldQueueInD1 = usesD1AppData() || process.env.EMAIL_DELIVERY_BACKEND === "d1";
+  if (!shouldQueueInD1) {
     const result = await sendTransactionalEmail(message);
     return { ...result, queued: false };
   }
