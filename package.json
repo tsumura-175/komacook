@@ -36,6 +36,7 @@
     "d1:migrate:remote": "wrangler d1 migrations apply komacook-production --remote",
     "d1:seed:local": "wrangler d1 execute komacook-production --local --file cloudflare/d1/seed.sql",
     "d1:seed:remote": "wrangler d1 execute komacook-production --remote --file cloudflare/d1/seed.sql",
+    "d1:grant-admin:remote": "node scripts/grant-d1-admin.mjs",
     "r2:maintenance:tail": "wrangler tail --config cloudflare/maintenance/wrangler.jsonc"
   },
   "dependencies": {

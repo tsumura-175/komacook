@@ -3,6 +3,7 @@ import { faCircleCheck, faMagnifyingGlass, faRotateLeft, faTriangleExclamation, 
 import Link from "next/link";
 import { createClient } from "../../lib/supabase/server";
 import { reactivateUser, resetProfilePresentation, restoreRecipe, suspendUser, unpublishRecipe } from "./actions";
+import { getD1Database, usesD1AppData } from "../../lib/d1-bindings";
 
 type UserRow = {
   user_id: string;
@@ -62,8 +63,15 @@ export function ResultMessage({ result }: { result?: string }) {
 export async function AdminUsersPanel({ query, status, result, currentUserId }: { query: string; status: string; result?: string; currentUserId: string }) {
   const supabase = await createClient();
   const validStatus = ["active", "suspended", "deletion_pending"].includes(status) ? status : null;
-  const { data, error } = await supabase.rpc("admin_list_users", { search_text: query, status_filter: validStatus });
-  const users = (data ?? []) as UserRow[];
+  const d1 = usesD1AppData() ? await getD1Database() : null;
+  const d1Rows = d1 ? await d1.prepare(`SELECT profile.user_id, profile.display_name, profile.account_status, profile.created_at,
+      (SELECT COUNT(*) FROM recipes WHERE owner_user_id = profile.user_id) AS recipe_count,
+      (SELECT COUNT(*) FROM recipes WHERE owner_user_id = profile.user_id AND visibility = 'public' AND status = 'published' AND deleted_at IS NULL) AS public_recipe_count,
+      EXISTS(SELECT 1 FROM user_roles WHERE user_id = profile.user_id AND role = 'admin') AS is_admin
+      FROM profiles AS profile WHERE (? = '' OR lower(profile.display_name) LIKE ?) AND (? IS NULL OR profile.account_status = ?) ORDER BY profile.created_at DESC`)
+    .bind(query, `%${query.toLocaleLowerCase("ja")}%`, validStatus, validStatus).all<Omit<UserRow, "email">>() : null;
+  const { data, error } = d1 ? { data: null, error: null } : await supabase.rpc("admin_list_users", { search_text: query, status_filter: validStatus });
+  const users = d1 ? (d1Rows?.results ?? []).map((user) => ({ ...user, email: null })) as UserRow[] : (data ?? []) as UserRow[];
 
   return <div className="admin-workspace">
     <ResultMessage result={result} />
@@ -88,6 +96,16 @@ export async function AdminUsersPanel({ query, status, result, currentUserId }: 
 
 export async function AdminRecipesPanel({ query, state, result }: { query: string; state: string; result?: string }) {
   const supabase = await createClient();
+  if (usesD1AppData()) {
+    const db = await getD1Database();
+    const where = ["recipe.status = 'published'", "(? = '' OR lower(recipe.title) LIKE ?)"];
+    const params: Array<string> = [query, `%${query.toLocaleLowerCase("ja")}%`];
+    if (state === "public") where.push("recipe.visibility = 'public' AND recipe.moderated_at IS NULL");
+    else if (state === "moderated") where.push("recipe.moderated_at IS NOT NULL");
+    else where.push("(recipe.visibility = 'public' OR recipe.moderated_at IS NOT NULL)");
+    const rows = await db.prepare(`SELECT recipe.id, recipe.title, recipe.owner_user_id, recipe.visibility, recipe.status, recipe.published_at, recipe.updated_at, recipe.moderated_at, recipe.moderation_reason, profile.display_name AS owner_name FROM recipes AS recipe LEFT JOIN profiles AS profile ON profile.user_id = recipe.owner_user_id WHERE ${where.join(" AND ")} ORDER BY recipe.updated_at DESC`).bind(...params).all<RecipeRow & { owner_name: string | null }>();
+    return <RecipesContent query={query} state={state} result={result} recipes={rows.results ?? []} ownerNames={new Map((rows.results ?? []).flatMap((row) => row.owner_user_id ? [[row.owner_user_id, row.owner_name ?? "退会済みユーザー"] as const] : []))} error={false} />;
+  }
   let request = supabase.from("recipes").select("id,title,owner_user_id,visibility,status,published_at,updated_at,moderated_at,moderation_reason").eq("status", "published").order("updated_at", { ascending: false });
   if (query) request = request.ilike("title", `%${query}%`);
   if (state === "public") request = request.eq("visibility", "public").is("moderated_at", null);
@@ -99,6 +117,10 @@ export async function AdminRecipesPanel({ query, state, result }: { query: strin
   const { data: owners } = ownerIds.length ? await supabase.from("profiles").select("user_id,display_name").in("user_id", ownerIds) : { data: [] };
   const ownerNames = new Map((owners ?? []).map((owner) => [owner.user_id, owner.display_name]));
 
+  return <RecipesContent query={query} state={state} result={result} recipes={recipes} ownerNames={ownerNames} error={Boolean(error)} />;
+}
+
+function RecipesContent({ query, state, result, recipes, ownerNames, error }: { query: string; state: string; result?: string; recipes: RecipeRow[]; ownerNames: Map<string, string>; error: boolean }) {
   return <div className="admin-workspace">
     <ResultMessage result={result} />
     <form className="admin-filter" method="get">
@@ -119,11 +141,13 @@ export async function AdminRecipesPanel({ query, state, result }: { query: strin
 
 export async function AdminAuditPanel() {
   const supabase = await createClient();
-  const { data } = await supabase.from("admin_actions").select("id,admin_user_id,action_type,target_type,target_id,reason,created_at").order("created_at", { ascending: false }).limit(100);
-  const actions = data ?? [];
+  const d1 = usesD1AppData() ? await getD1Database() : null;
+  const { data } = d1 ? { data: null } : await supabase.from("admin_actions").select("id,admin_user_id,action_type,target_type,target_id,reason,created_at").order("created_at", { ascending: false }).limit(100);
+  const actions = d1 ? (await d1.prepare("SELECT id, admin_user_id, action_type, target_type, target_id, reason, created_at FROM admin_actions ORDER BY created_at DESC LIMIT 100").all()).results ?? [] : data ?? [];
   const adminIds = [...new Set(actions.map((action) => action.admin_user_id))];
-  const { data: admins } = adminIds.length ? await supabase.from("profiles").select("user_id,display_name").in("user_id", adminIds) : { data: [] };
-  const adminNames = new Map((admins ?? []).map((admin) => [admin.user_id, admin.display_name]));
+  const { data: admins } = d1 || !adminIds.length ? { data: [] } : await supabase.from("profiles").select("user_id,display_name").in("user_id", adminIds);
+  const d1Admins = d1 && adminIds.length ? (await d1.prepare(`SELECT user_id, display_name FROM profiles WHERE user_id IN (${adminIds.map(() => "?").join(", ")})`).bind(...adminIds).all<{ user_id: string; display_name: string }>()).results ?? [] : [];
+  const adminNames = new Map([...(admins ?? []), ...d1Admins].map((admin) => [admin.user_id, admin.display_name]));
   const actionLabels: Record<string, string> = { user_suspended: "会員を利用停止", user_reactivated: "会員の利用を再開", profile_presentation_reset: "プロフィールを初期化", recipe_unpublished: "レシピを公開停止", recipe_restored: "レシピを再公開", report_status_updated: "通報状態を更新", notice_created: "お知らせを作成", notice_updated: "お知らせを更新", notice_deleted: "お知らせを削除", category_created: "カテゴリを追加", category_updated: "カテゴリを更新", category_activated: "カテゴリを有効化", category_deactivated: "カテゴリを無効化", tag_updated: "タグ名を更新", tag_activated: "タグを有効化", tag_deactivated: "タグを無効化" };
   return <div className="admin-workspace">{actions.length ? <ol className="admin-audit-list">{actions.map((action) => <li key={action.id}><div><strong>{actionLabels[action.action_type] ?? action.action_type}</strong><span>{adminNames.get(action.admin_user_id) ?? "管理者"}</span></div><p>{action.reason}</p><small>{new Date(action.created_at).toLocaleString("ja-JP")} ・ {action.target_type}：{action.target_id ?? "-"}</small></li>)}</ol> : <div className="member-empty"><h3>監査ログはありません</h3></div>}</div>;
 }

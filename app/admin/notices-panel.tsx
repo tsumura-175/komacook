@@ -3,15 +3,19 @@ import { faBell, faThumbtack } from "@fortawesome/free-solid-svg-icons";
 import { createClient } from "../../lib/supabase/server";
 import { saveNotice } from "../notices/actions";
 import { NoticeDeleteButton } from "./notice-delete-button";
+import { getD1Database, usesD1AppData } from "../../lib/d1-bindings";
 
 function localDate(value: string | null) { if (!value) return ""; const date = new Date(value); const offset = date.getTimezoneOffset() * 60000; return new Date(date.getTime() - offset).toISOString().slice(0, 16); }
 const statuses = [["draft", "下書き"], ["scheduled", "予約公開"], ["published", "公開中"], ["hidden", "非公開"]] as const;
 function editableStatus(notice: { status: string; publish_at: string | null }) { return notice.status === "published" && notice.publish_at && new Date(notice.publish_at) > new Date() ? "scheduled" : notice.status; }
 
 export async function AdminNoticesPanel() {
-  const supabase = await createClient(); const { data: notices } = await supabase.from("notices").select("id,title,body,status,audience,is_pinned,publish_at,end_at,updated_at").order("is_pinned", { ascending: false }).order("updated_at", { ascending: false });
+  const supabase = await createClient();
+  const notices = usesD1AppData()
+    ? ((await (await getD1Database()).prepare("SELECT id, title, body, status, audience, is_pinned, publish_at, end_at, updated_at FROM notices ORDER BY is_pinned DESC, updated_at DESC").all()).results ?? [])
+    : ((await supabase.from("notices").select("id,title,body,status,audience,is_pinned,publish_at,end_at,updated_at").order("is_pinned", { ascending: false }).order("updated_at", { ascending: false })).data ?? []);
   return <div className="admin-notices"><details className="admin-notice-editor" open><summary><FontAwesomeIcon icon={faBell} />新しいお知らせを作成</summary><form action={saveNotice.bind(null, "")} className="admin-notice-form"><NoticeFields /></form></details>
-    <div className="admin-notice-list">{(notices ?? []).map((notice) => <details className="admin-notice-editor" key={notice.id}><summary><span>{notice.is_pinned ? <FontAwesomeIcon icon={faThumbtack} /> : null}{notice.title}</span><small>{statuses.find(([value]) => value === editableStatus(notice))?.[1]}・{notice.audience === "all" ? "全員" : "会員のみ"}</small></summary><form action={saveNotice.bind(null, notice.id)} className="admin-notice-form"><NoticeFields notice={notice} /></form></details>)}</div>
+    <div className="admin-notice-list">{notices.map((notice) => <details className="admin-notice-editor" key={String(notice.id)}><summary><span>{notice.is_pinned ? <FontAwesomeIcon icon={faThumbtack} /> : null}{String(notice.title)}</span><small>{statuses.find(([value]) => value === editableStatus(notice as Notice))?.[1]}・{notice.audience === "all" ? "全員" : "会員のみ"}</small></summary><form action={saveNotice.bind(null, String(notice.id))} className="admin-notice-form"><NoticeFields notice={notice as Notice} /></form></details>)}</div>
   </div>;
 }
 

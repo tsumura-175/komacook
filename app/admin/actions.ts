@@ -6,6 +6,41 @@ import { z } from "zod";
 import { queueTransactionalEmail } from "../../lib/email";
 import { getSiteUrl } from "../../lib/site-url";
 import { createClient } from "../../lib/supabase/server";
+import { createAdminClient } from "../../lib/supabase/admin";
+import { getD1Database, usesD1AppData } from "../../lib/d1-bindings";
+import { deleteR2Images } from "../../lib/r2-images";
+
+async function requireD1Admin() {
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData.user) redirect("/login?next=/admin");
+  const db = await getD1Database();
+  const role = await db.prepare("SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'admin'").bind(authData.user.id).first();
+  if (!role) redirect("/");
+  return { db, admin: authData.user };
+}
+
+async function writeD1Audit(db: D1Database, adminUserId: string, actionType: string, targetType: string, targetId: string | null, reason: string, metadata: Record<string, unknown> = {}) {
+  await db.prepare("INSERT INTO admin_actions (id, admin_user_id, action_type, target_type, target_id, reason, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), adminUserId, actionType, targetType, targetId, reason, JSON.stringify(metadata)).run();
+}
+
+async function notifyD1User(db: D1Database, adminUserId: string, input: { userId: string; type: string; title: string; body: string; targetType?: string; targetId?: string; actionHref?: string; sendEmail?: boolean }) {
+  let emailStatus = input.sendEmail ? "failed" : "not_requested";
+  let sentAt: string | null = null;
+  let errorCode: string | null = null;
+  if (input.sendEmail) {
+    try {
+      const { data, error } = await createAdminClient().auth.admin.getUserById(input.userId);
+      if (error || !data.user?.email) throw new Error("NOTIFICATION_EMAIL_NOT_CONFIGURED");
+      await queueTransactionalEmail("member_notification", { to: data.user.email, subject: `【こまクック】${input.title}`, text: [input.title, "", input.body, "", `お問い合わせ: ${getSiteUrl()}/contact`].join("\n") });
+      emailStatus = "sent"; sentAt = new Date().toISOString();
+    } catch (error) { errorCode = error instanceof Error ? error.message.slice(0, 100) : "MAIL_SEND_FAILED"; }
+  }
+  await db.prepare(`INSERT INTO user_notifications (id, user_id, notification_type, title, body, target_type, target_id, action_href, email_delivery_status, email_sent_at, email_error_code, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), input.userId, input.type, input.title, input.body, input.targetType ?? null, input.targetId ?? null, input.actionHref ?? null, emailStatus, sentAt, errorCode, adminUserId).run();
+}
 
 const updateSchema = z.object({ reportId: z.string().uuid(), status: z.enum(["open", "reviewing", "resolved", "dismissed"]), adminNote: z.string().trim().max(2000) });
 const moderationSchema = z.object({ targetId: z.string().uuid(), reason: z.string().trim().min(1).max(1000) });
@@ -82,6 +117,14 @@ async function notifyUser(
 export async function updateReport(reportId: string, formData: FormData) {
   const parsed = updateSchema.safeParse({ reportId, status: formData.get("status"), adminNote: formData.get("admin_note") });
   if (!parsed.success) return;
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const handled = parsed.data.status === "resolved" || parsed.data.status === "dismissed";
+    await db.prepare("UPDATE reports SET status = ?, admin_note = ?, handled_by = ?, handled_at = ?, updated_at = ? WHERE id = ?")
+      .bind(parsed.data.status, parsed.data.adminNote || null, handled ? admin.id : null, handled ? new Date().toISOString() : null, new Date().toISOString(), parsed.data.reportId).run();
+    await writeD1Audit(db, admin.id, "report_status_updated", "report", parsed.data.reportId, `通報ステータスを${parsed.data.status}へ変更`, { status: parsed.data.status });
+    revalidatePath("/admin"); revalidatePath("/admin/reports"); return;
+  }
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return;
@@ -98,6 +141,15 @@ export async function updateReport(reportId: string, formData: FormData) {
 export async function suspendUser(userId: string, formData: FormData) {
   const parsed = moderationSchema.safeParse({ targetId: userId, reason: formData.get("reason") });
   if (!parsed.success) redirect("/admin/users?result=invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    if (parsed.data.targetId === admin.id || await db.prepare("SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'admin'").bind(parsed.data.targetId).first()) redirect("/admin/users?result=self");
+    const updated = await db.prepare("UPDATE profiles SET account_status = 'suspended', updated_at = ? WHERE user_id = ? AND account_status = 'active'").bind(new Date().toISOString(), parsed.data.targetId).run();
+    if (!updated.meta.changes) redirect("/admin/users?result=unavailable");
+    await writeD1Audit(db, admin.id, "user_suspended", "user", parsed.data.targetId, parsed.data.reason);
+    await notifyD1User(db, admin.id, { userId: parsed.data.targetId, type: "account_suspended", title: "アカウントを利用停止しました", body: `運営による確認の結果、アカウントを利用停止しました。\n\n理由：${parsed.data.reason}\n\n確認や再開をご希望の場合は、お問い合わせフォームからご連絡ください。`, targetType: "user", targetId: parsed.data.targetId, actionHref: "/contact", sendEmail: true });
+    revalidatePath("/admin"); revalidatePath("/admin/users"); redirect("/admin/users?result=suspended");
+  }
   const { supabase, admin } = await requireAdmin();
   if (parsed.data.targetId === admin.id) redirect("/admin/users?result=self");
 
@@ -119,6 +171,14 @@ export async function suspendUser(userId: string, formData: FormData) {
 export async function reactivateUser(userId: string, formData: FormData) {
   const parsed = moderationSchema.safeParse({ targetId: userId, reason: formData.get("reason") });
   if (!parsed.success) redirect("/admin/users?result=invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const updated = await db.prepare("UPDATE profiles SET account_status = 'active', updated_at = ? WHERE user_id = ? AND account_status = 'suspended'").bind(new Date().toISOString(), parsed.data.targetId).run();
+    if (!updated.meta.changes) redirect("/admin/users?result=unavailable");
+    await writeD1Audit(db, admin.id, "user_reactivated", "user", parsed.data.targetId, parsed.data.reason);
+    await notifyD1User(db, admin.id, { userId: parsed.data.targetId, type: "account_reactivated", title: "アカウントの利用を再開しました", body: `確認が完了したため、アカウントを利用再開しました。\n\n対応内容：${parsed.data.reason}`, targetType: "user", targetId: parsed.data.targetId, actionHref: "/mypage", sendEmail: true });
+    revalidatePath("/admin"); revalidatePath("/admin/users"); redirect("/admin/users?result=reactivated");
+  }
   const { supabase, admin } = await requireAdmin();
   const { error } = await supabase.from("profiles").update({ account_status: "active" }).eq("user_id", parsed.data.targetId).eq("account_status", "suspended");
   if (error) redirect("/admin/users?result=error");
@@ -132,6 +192,17 @@ export async function reactivateUser(userId: string, formData: FormData) {
 export async function resetProfilePresentation(userId: string, formData: FormData) {
   const parsed = moderationSchema.safeParse({ targetId: userId, reason: formData.get("reason") });
   if (!parsed.success) redirect("/admin/users?result=invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    if (parsed.data.targetId === admin.id) redirect("/admin/users?result=self");
+    const profile = await db.prepare("SELECT avatar_key FROM profiles WHERE user_id = ?").bind(parsed.data.targetId).first<{ avatar_key: string | null }>();
+    if (!profile) redirect("/admin/users?result=unavailable");
+    await db.prepare("UPDATE profiles SET display_name = 'こまクックユーザー', avatar_kind = 'preset', preset_avatar_key = 'utensils', avatar_color = 'coral', avatar_key = NULL, updated_at = ? WHERE user_id = ?").bind(new Date().toISOString(), parsed.data.targetId).run();
+    if (profile.avatar_key) await deleteR2Images([profile.avatar_key]);
+    await writeD1Audit(db, admin.id, "profile_presentation_reset", "user", parsed.data.targetId, parsed.data.reason);
+    await notifyD1User(db, admin.id, { userId: parsed.data.targetId, type: "profile_reset", title: "プロフィール情報を初期状態へ戻しました", body: `表示名とプロフィール画像を初期状態へ戻しました。\n\n理由：${parsed.data.reason}\n\nマイページから適切な内容を設定してください。`, targetType: "user", targetId: parsed.data.targetId, actionHref: "/settings/profile" });
+    revalidatePath("/admin/users"); revalidatePath(`/users/${parsed.data.targetId}`); redirect("/admin/users?result=profile-reset");
+  }
   const { supabase, admin } = await requireAdmin();
   if (parsed.data.targetId === admin.id) redirect("/admin/users?result=self");
 
@@ -153,6 +224,16 @@ export async function resetProfilePresentation(userId: string, formData: FormDat
 export async function unpublishRecipe(recipeId: string, formData: FormData) {
   const parsed = moderationSchema.safeParse({ targetId: recipeId, reason: formData.get("reason") });
   if (!parsed.success) redirect("/admin/recipes?result=invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const recipe = await db.prepare("SELECT title, owner_user_id, visibility, status, moderated_at FROM recipes WHERE id = ?").bind(parsed.data.targetId).first<{ title: string; owner_user_id: string | null; visibility: string; status: string; moderated_at: string | null }>();
+    if (!recipe || recipe.visibility !== "public" || recipe.status !== "published" || recipe.moderated_at) redirect("/admin/recipes?result=unavailable");
+    const now = new Date().toISOString();
+    await db.prepare("UPDATE recipes SET visibility = 'private', moderated_at = ?, moderated_by = ?, moderation_reason = ?, moderation_previous_visibility = 'public', updated_at = ? WHERE id = ? AND visibility = 'public' AND moderated_at IS NULL").bind(now, admin.id, parsed.data.reason, now, parsed.data.targetId).run();
+    await writeD1Audit(db, admin.id, "recipe_unpublished", "recipe", parsed.data.targetId, parsed.data.reason, { previous_visibility: "public" });
+    if (recipe.owner_user_id) await notifyD1User(db, admin.id, { userId: recipe.owner_user_id, type: "recipe_unpublished", title: `「${recipe.title}」を公開停止しました`, body: `投稿内容の確認により、このレシピを公開停止しました。\n\n理由：${parsed.data.reason}\n\n内容を確認し、必要な修正についてはお問い合わせフォームからご連絡ください。`, targetType: "recipe", targetId: parsed.data.targetId, actionHref: "/mypage/recipes" });
+    revalidatePath("/"); revalidatePath("/recipes"); revalidatePath(`/recipes/${parsed.data.targetId}`); revalidatePath("/admin/recipes"); redirect("/admin/recipes?result=unpublished");
+  }
   const { supabase, admin } = await requireAdmin();
   const { data: recipe } = await supabase.from("recipes").select("title, owner_user_id, visibility, status, moderated_at").eq("id", parsed.data.targetId).maybeSingle();
   if (!recipe || recipe.visibility !== "public" || recipe.status !== "published" || recipe.moderated_at) redirect("/admin/recipes?result=unavailable");
@@ -178,6 +259,15 @@ export async function unpublishRecipe(recipeId: string, formData: FormData) {
 export async function restoreRecipe(recipeId: string, formData: FormData) {
   const parsed = moderationSchema.safeParse({ targetId: recipeId, reason: formData.get("reason") });
   if (!parsed.success) redirect("/admin/recipes?result=invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const recipe = await db.prepare("SELECT title, owner_user_id, moderated_at, moderation_previous_visibility, status FROM recipes WHERE id = ?").bind(parsed.data.targetId).first<{ title: string; owner_user_id: string | null; moderated_at: string | null; moderation_previous_visibility: string | null; status: string }>();
+    if (!recipe?.moderated_at || recipe.moderation_previous_visibility !== "public" || recipe.status !== "published") redirect("/admin/recipes?result=unavailable");
+    await db.prepare("UPDATE recipes SET visibility = 'public', moderated_at = NULL, moderated_by = NULL, moderation_reason = NULL, moderation_previous_visibility = NULL, updated_at = ? WHERE id = ? AND moderated_at IS NOT NULL").bind(new Date().toISOString(), parsed.data.targetId).run();
+    await writeD1Audit(db, admin.id, "recipe_restored", "recipe", parsed.data.targetId, parsed.data.reason);
+    if (recipe.owner_user_id) await notifyD1User(db, admin.id, { userId: recipe.owner_user_id, type: "recipe_restored", title: `「${recipe.title}」を再公開しました`, body: `確認が完了したため、このレシピを再公開しました。\n\n対応内容：${parsed.data.reason}`, targetType: "recipe", targetId: parsed.data.targetId, actionHref: `/recipes/${parsed.data.targetId}` });
+    revalidatePath("/"); revalidatePath("/recipes"); revalidatePath(`/recipes/${parsed.data.targetId}`); revalidatePath("/admin/recipes"); redirect("/admin/recipes?result=restored");
+  }
   const { supabase, admin } = await requireAdmin();
   const { data: recipe } = await supabase.from("recipes").select("title, owner_user_id, moderated_at, moderation_previous_visibility, status").eq("id", parsed.data.targetId).maybeSingle();
   if (!recipe?.moderated_at || recipe.moderation_previous_visibility !== "public" || recipe.status !== "published") redirect("/admin/recipes?result=unavailable");
@@ -202,6 +292,22 @@ export async function restoreRecipe(recipeId: string, formData: FormData) {
 export async function saveCategory(categoryId: string | undefined, formData: FormData) {
   const parsed = categorySchema.safeParse({ categoryId: categoryId || undefined, name: formData.get("name"), sortOrder: formData.get("sort_order") });
   if (!parsed.success) redirect("/admin/categories?result=taxonomy-invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    try {
+      if (parsed.data.categoryId) {
+        const existing = await db.prepare("SELECT name FROM categories WHERE id = ?").bind(parsed.data.categoryId).first<{ name: string }>();
+        if (!existing) redirect("/admin/categories?result=taxonomy-unavailable");
+        await db.prepare("UPDATE categories SET name = ?, sort_order = ?, updated_at = ? WHERE id = ?").bind(parsed.data.name, parsed.data.sortOrder, new Date().toISOString(), parsed.data.categoryId).run();
+        await writeD1Audit(db, admin.id, "category_updated", "category", parsed.data.categoryId, `カテゴリ「${existing.name}」を「${parsed.data.name}」へ更新`, { sort_order: parsed.data.sortOrder });
+      } else {
+        const id = crypto.randomUUID();
+        await db.prepare("INSERT INTO categories (id, slug, name, sort_order) VALUES (?, ?, ?, ?)").bind(id, `custom-${id.slice(0, 8)}`, parsed.data.name, parsed.data.sortOrder).run();
+        await writeD1Audit(db, admin.id, "category_created", "category", id, `カテゴリ「${parsed.data.name}」を追加`, { sort_order: parsed.data.sortOrder });
+      }
+    } catch { redirect("/admin/categories?result=taxonomy-duplicate"); }
+    revalidatePath("/"); revalidatePath("/recipes"); revalidatePath("/recipes/new"); revalidatePath("/admin/categories"); redirect(`/admin/categories?result=${parsed.data.categoryId ? "category-updated" : "category-created"}`);
+  }
   const { supabase, admin } = await requireAdmin();
   const payload = { name: parsed.data.name, sort_order: parsed.data.sortOrder };
 
@@ -226,6 +332,17 @@ export async function saveCategory(categoryId: string | undefined, formData: For
 export async function toggleCategory(categoryId: string, formData: FormData) {
   const parsed = z.object({ categoryId: z.string().uuid(), active: z.enum(["true", "false"]) }).safeParse({ categoryId, active: formData.get("active") });
   if (!parsed.success) redirect("/admin/categories?result=taxonomy-invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const category = await db.prepare("SELECT name, slug, is_active FROM categories WHERE id = ?").bind(parsed.data.categoryId).first<{ name: string; slug: string; is_active: number }>();
+    if (!category) redirect("/admin/categories?result=taxonomy-unavailable");
+    const nextActive = parsed.data.active === "true";
+    if (!nextActive && category.slug === "other") redirect("/admin/categories?result=category-required");
+    if (!nextActive && await db.prepare("SELECT 1 FROM recipes WHERE category_id = ? LIMIT 1").bind(parsed.data.categoryId).first()) redirect("/admin/categories?result=category-in-use");
+    await db.prepare("UPDATE categories SET is_active = ?, updated_at = ? WHERE id = ?").bind(nextActive ? 1 : 0, new Date().toISOString(), parsed.data.categoryId).run();
+    await writeD1Audit(db, admin.id, nextActive ? "category_activated" : "category_deactivated", "category", parsed.data.categoryId, `カテゴリ「${category.name}」を${nextActive ? "有効化" : "無効化"}`);
+    revalidatePath("/recipes"); revalidatePath("/recipes/new"); revalidatePath("/admin/categories"); redirect(`/admin/categories?result=${nextActive ? "category-activated" : "category-deactivated"}`);
+  }
   const { supabase, admin } = await requireAdmin();
   const { data: category } = await supabase.from("categories").select("name,slug,is_active").eq("id", parsed.data.categoryId).maybeSingle();
   if (!category) redirect("/admin/categories?result=taxonomy-unavailable");
@@ -247,6 +364,15 @@ export async function toggleCategory(categoryId: string, formData: FormData) {
 export async function saveTag(tagId: string, formData: FormData) {
   const parsed = tagSchema.safeParse({ tagId, name: formData.get("name") });
   if (!parsed.success) redirect("/admin/categories?result=taxonomy-invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const existing = await db.prepare("SELECT name FROM tags WHERE id = ?").bind(parsed.data.tagId).first<{ name: string }>();
+    if (!existing) redirect("/admin/categories?result=taxonomy-unavailable");
+    try { await db.prepare("UPDATE tags SET name = ?, normalized_name = ? WHERE id = ?").bind(parsed.data.name, parsed.data.name.toLocaleLowerCase("ja"), parsed.data.tagId).run(); }
+    catch { redirect("/admin/categories?result=taxonomy-duplicate"); }
+    await writeD1Audit(db, admin.id, "tag_updated", "tag", parsed.data.tagId, `タグ「${existing.name}」を「${parsed.data.name}」へ変更`);
+    revalidatePath("/"); revalidatePath("/recipes"); revalidatePath("/admin/categories"); redirect("/admin/categories?result=tag-updated");
+  }
   const { supabase, admin } = await requireAdmin();
   const { data: existing } = await supabase.from("tags").select("name").eq("id", parsed.data.tagId).maybeSingle();
   if (!existing) redirect("/admin/categories?result=taxonomy-unavailable");
@@ -262,6 +388,15 @@ export async function saveTag(tagId: string, formData: FormData) {
 export async function toggleTag(tagId: string, formData: FormData) {
   const parsed = z.object({ tagId: z.string().uuid(), active: z.enum(["true", "false"]) }).safeParse({ tagId, active: formData.get("active") });
   if (!parsed.success) redirect("/admin/categories?result=taxonomy-invalid");
+  if (usesD1AppData()) {
+    const { db, admin } = await requireD1Admin();
+    const tag = await db.prepare("SELECT name FROM tags WHERE id = ?").bind(parsed.data.tagId).first<{ name: string }>();
+    if (!tag) redirect("/admin/categories?result=taxonomy-unavailable");
+    const nextActive = parsed.data.active === "true";
+    await db.prepare("UPDATE tags SET is_active = ? WHERE id = ?").bind(nextActive ? 1 : 0, parsed.data.tagId).run();
+    await writeD1Audit(db, admin.id, nextActive ? "tag_activated" : "tag_deactivated", "tag", parsed.data.tagId, `タグ「${tag.name}」を${nextActive ? "有効化" : "無効化"}`);
+    revalidatePath("/"); revalidatePath("/recipes"); revalidatePath("/admin/categories"); redirect(`/admin/categories?result=${nextActive ? "tag-activated" : "tag-deactivated"}`);
+  }
   const { supabase, admin } = await requireAdmin();
   const { data: tag } = await supabase.from("tags").select("name").eq("id", parsed.data.tagId).maybeSingle();
   if (!tag) redirect("/admin/categories?result=taxonomy-unavailable");

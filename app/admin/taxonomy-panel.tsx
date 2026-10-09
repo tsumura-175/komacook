@@ -3,12 +3,23 @@ import { faChevronDown, faMagnifyingGlass, faPlus, faTags } from "@fortawesome/f
 import { createClient } from "../../lib/supabase/server";
 import { saveCategory, saveTag, toggleCategory, toggleTag } from "./actions";
 import { ResultMessage } from "./moderation-panels";
+import { getD1Database, usesD1AppData } from "../../lib/d1-bindings";
 
 type CategoryRow = { id: string; slug: string; name: string; sort_order: number; is_active: boolean };
 type TagRow = { id: string; name: string; is_active: boolean; created_at: string };
 
 export async function AdminTaxonomyPanel({ query, result }: { query: string; result?: string }) {
   const supabase = await createClient();
+  if (usesD1AppData()) {
+    const db = await getD1Database();
+    const [categoryResult, tagResult, recipeCategories, recipeTags] = await Promise.all([
+      db.prepare("SELECT id, slug, name, sort_order, is_active FROM categories ORDER BY sort_order, name").all<CategoryRow>(),
+      query ? db.prepare("SELECT id, name, is_active, created_at FROM tags WHERE lower(name) LIKE ? ORDER BY is_active DESC, name").bind(`%${query.toLocaleLowerCase("ja")}%`).all<TagRow>() : db.prepare("SELECT id, name, is_active, created_at FROM tags ORDER BY is_active DESC, name").all<TagRow>(),
+      db.prepare("SELECT category_id FROM recipes WHERE category_id IS NOT NULL").all<{ category_id: string }>(),
+      db.prepare("SELECT tag_id FROM recipe_tags").all<{ tag_id: string }>(),
+    ]);
+    return <TaxonomyContent query={query} result={result} categories={categoryResult.results ?? []} tags={tagResult.results ?? []} recipeCategories={recipeCategories.results ?? []} recipeTags={recipeTags.results ?? []} hasError={false} />;
+  }
   let tagRequest = supabase.from("tags").select("id,name,is_active,created_at").order("is_active", { ascending: false }).order("name");
   if (query) tagRequest = tagRequest.ilike("name", `%${query}%`);
   const [categoryResult, tagResult, recipeCategories, recipeTags] = await Promise.all([
@@ -19,15 +30,19 @@ export async function AdminTaxonomyPanel({ query, result }: { query: string; res
   ]);
   const categories = (categoryResult.data ?? []) as CategoryRow[];
   const tags = (tagResult.data ?? []) as TagRow[];
-  const categoryCounts = new Map<string, number>();
-  for (const recipe of recipeCategories.data ?? []) categoryCounts.set(recipe.category_id, (categoryCounts.get(recipe.category_id) ?? 0) + 1);
-  const tagCounts = new Map<string, number>();
-  for (const relation of recipeTags.data ?? []) tagCounts.set(relation.tag_id, (tagCounts.get(relation.tag_id) ?? 0) + 1);
   const hasError = categoryResult.error || tagResult.error || recipeCategories.error || recipeTags.error;
 
+  return <TaxonomyContent query={query} result={result} categories={categories} tags={tags} recipeCategories={recipeCategories.data ?? []} recipeTags={recipeTags.data ?? []} hasError={Boolean(hasError)} />;
+}
+
+function TaxonomyContent({ query, result, categories, tags, recipeCategories, recipeTags, hasError }: { query: string; result?: string; categories: CategoryRow[]; tags: TagRow[]; recipeCategories: Array<{ category_id: string | null }>; recipeTags: Array<{ tag_id: string }>; hasError: boolean }) {
+  const categoryCounts = new Map<string, number>();
+  for (const recipe of recipeCategories) if (recipe.category_id) categoryCounts.set(recipe.category_id, (categoryCounts.get(recipe.category_id) ?? 0) + 1);
+  const tagCounts = new Map<string, number>();
+  for (const relation of recipeTags) tagCounts.set(relation.tag_id, (tagCounts.get(relation.tag_id) ?? 0) + 1);
   return <div className="admin-workspace taxonomy-workspace">
     <ResultMessage result={result} />
-    {hasError ? <div className="member-empty"><h3>タグ・カテゴリを取得できませんでした</h3><p>Supabaseのmigration適用状況を確認してください。</p></div> : <>
+    {hasError ? <div className="member-empty"><h3>タグ・カテゴリを取得できませんでした</h3><p>データベースの接続状態を確認してください。</p></div> : <>
       <section className="taxonomy-section" aria-labelledby="category-heading">
         <div className="taxonomy-section-heading"><div><h3 id="category-heading">固定カテゴリ</h3><p>レシピ登録時に1つ選ぶ分類です。表示順は小さい数字が先になります。</p></div><span>{categories.length}件</span></div>
         <details className="taxonomy-create"><summary><span><FontAwesomeIcon icon={faPlus} />カテゴリを追加</span><FontAwesomeIcon icon={faChevronDown} /></summary><form action={saveCategory.bind(null, undefined)} className="taxonomy-form"><label><span>カテゴリ名</span><input name="name" required maxLength={30} placeholder="例：おつまみ" /></label><label className="taxonomy-order-field"><span>表示順</span><input name="sort_order" required type="number" min={0} max={32767} defaultValue={(categories.at(-1)?.sort_order ?? 0) + 10} /></label><button className="primary-action" type="submit">追加する</button></form></details>

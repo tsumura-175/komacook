@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBell, faChartLine, faFlag, faList, faScroll, faTags, faUsers } from "@fortawesome/free-solid-svg-icons";
+import { faBell, faChartLine, faCircleCheck, faFlag, faList, faScroll, faTags, faUsers } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { BottomNav, SiteFooter, SiteHeader } from "../../components/site-shell";
@@ -8,8 +8,10 @@ import { updateReport } from "../actions";
 import { AdminAuditPanel, AdminRecipesPanel, AdminUsersPanel } from "../moderation-panels";
 import { AdminNoticesPanel } from "../notices-panel";
 import { AdminTaxonomyPanel } from "../taxonomy-panel";
+import { AdminCutoverCheckPanel } from "../cutover-check-panel";
+import { getD1Database, usesD1AppData } from "../../../lib/d1-bindings";
 
-const menus = [{ id: "", label: "概要", icon: faChartLine }, { id: "users", label: "会員", icon: faUsers }, { id: "recipes", label: "レシピ", icon: faList }, { id: "reports", label: "通報", icon: faFlag }, { id: "notices", label: "お知らせ", icon: faBell }, { id: "categories", label: "タグ・カテゴリ", icon: faTags }, { id: "audit-logs", label: "監査ログ", icon: faScroll }];
+const menus = [{ id: "", label: "概要", icon: faChartLine }, { id: "users", label: "会員", icon: faUsers }, { id: "recipes", label: "レシピ", icon: faList }, { id: "reports", label: "通報", icon: faFlag }, { id: "notices", label: "お知らせ", icon: faBell }, { id: "categories", label: "タグ・カテゴリ", icon: faTags }, { id: "audit-logs", label: "監査ログ", icon: faScroll }, { id: "cutover-check", label: "切替確認", icon: faCircleCheck }];
 const reasonLabels: Record<string, string> = { copyright: "権利侵害・無断転載", dangerous: "危険または不正確", inappropriate: "不適切な表現", spam: "スパム・宣伝", other: "その他" };
 const statusLabels: Record<string, string> = { open: "未対応", reviewing: "確認中", resolved: "対応済み", dismissed: "対応不要" };
 
@@ -27,25 +29,37 @@ export default async function AdminPage({ params, searchParams }: { params: Prom
   if (!current) notFound();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) redirect(`/login?next=${encodeURIComponent(section ? `/admin/${section}` : "/admin")}`);
-  const { data: isAdmin } = await supabase.rpc("is_admin");
+  const isAdmin = usesD1AppData()
+    ? Boolean(await (await getD1Database()).prepare("SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'admin'").bind(authData.user.id).first())
+    : (await supabase.rpc("is_admin")).data;
   if (!isAdmin) notFound();
 
-  const [profiles, recipes, openReports, reportRows] = await Promise.all([
+  const d1 = usesD1AppData() ? await getD1Database() : null;
+  const [profiles, recipes, openReports, reportRows] = d1 ? await Promise.all([
+    d1.prepare("SELECT COUNT(*) AS count FROM profiles").first<{ count: number }>(),
+    d1.prepare("SELECT COUNT(*) AS count FROM recipes WHERE visibility = 'public' AND status = 'published' AND deleted_at IS NULL").first<{ count: number }>(),
+    d1.prepare("SELECT COUNT(*) AS count FROM reports WHERE status IN ('open', 'reviewing')").first<{ count: number }>(),
+    section === "reports" ? d1.prepare(`SELECT report.id, report.target_type, report.recipe_id, report.profile_user_id, report.reason, report.detail, report.status, report.admin_note, report.created_at, recipe.title AS recipe_title FROM reports AS report LEFT JOIN recipes AS recipe ON recipe.id = report.recipe_id ORDER BY report.created_at DESC`).all<ReportRow & { recipe_title: string | null }>() : Promise.resolve({ results: [] as Array<ReportRow & { recipe_title: string | null }> }),
+  ]) : await Promise.all([
     supabase.from("profiles").select("user_id", { count: "exact", head: true }),
     supabase.from("recipes").select("id", { count: "exact", head: true }).eq("visibility", "public").eq("status", "published"),
     supabase.from("reports").select("id", { count: "exact", head: true }).in("status", ["open", "reviewing"]),
     section === "reports" ? supabase.from("reports").select("id, target_type, recipe_id, profile_user_id, reason, detail, status, admin_note, created_at, recipes(title)").order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
-  const reports = (reportRows.data ?? []) as unknown as ReportRow[];
+  const d1ReportRows = d1 ? ((reportRows as unknown as { results: Array<ReportRow & { recipe_title: string | null }> }).results ?? []) : [];
+  const reports = d1 ? d1ReportRows.map((report) => ({ ...report, recipes: report.recipe_title ? { title: report.recipe_title } : null })) as ReportRow[] : ((reportRows as unknown as { data: ReportRow[] }).data ?? []);
+  const d1ProfileCount = d1 ? Number((profiles as { count?: number } | null)?.count ?? 0) : 0;
+  const d1RecipeCount = d1 ? Number((recipes as { count?: number } | null)?.count ?? 0) : 0;
+  const d1OpenReportCount = d1 ? Number((openReports as { count?: number } | null)?.count ?? 0) : 0;
   const profileIds = [...new Set(reports.flatMap((report) => report.profile_user_id ? [report.profile_user_id] : []))];
-  const { data: reportedProfiles } = profileIds.length ? await supabase.from("profiles").select("user_id, display_name").in("user_id", profileIds) : { data: [] };
-  const profileNames = new Map((reportedProfiles ?? []).map((profile) => [profile.user_id, profile.display_name]));
+  const reportedProfiles = d1 && profileIds.length ? (await d1.prepare(`SELECT user_id, display_name FROM profiles WHERE user_id IN (${profileIds.map(() => "?").join(", ")})`).bind(...profileIds).all<{ user_id: string; display_name: string }>()).results ?? [] : !d1 && profileIds.length ? (await supabase.from("profiles").select("user_id, display_name").in("user_id", profileIds)).data ?? [] : [];
+  const profileNames = new Map(reportedProfiles.map((profile) => [profile.user_id, profile.display_name]));
 
   return <div className="app-shell member-page-shell"><SiteHeader /><main className="member-page-main">
     <header className="member-page-heading"><div><h1>管理画面</h1><p>個人運営に必要な確認と対応を、優先度順に管理します。</p></div><span className="status-badge">管理者</span></header>
     <div className="management-layout"><nav className="management-panel admin-nav" aria-label="管理メニュー">{menus.map((item) => <Link key={item.id} className={section === item.id ? "is-current" : ""} href={item.id ? `/admin/${item.id}` : "/admin"}><FontAwesomeIcon icon={item.icon} />{item.label}</Link>)}</nav>
       <section className="management-panel"><h2>{current.label}</h2>
-        {section === "" ? <div className="mypage-summary"><Link href="/admin/users"><span><FontAwesomeIcon icon={faUsers} /></span><div><strong>{profiles.count ?? 0}</strong><small>会員数</small></div></Link><Link href="/admin/recipes"><span><FontAwesomeIcon icon={faList} /></span><div><strong>{recipes.count ?? 0}</strong><small>公開レシピ</small></div></Link><Link href="/admin/reports"><span><FontAwesomeIcon icon={faFlag} /></span><div><strong>{openReports.count ?? 0}</strong><small>要確認の通報</small></div></Link></div> : null}
+        {section === "" ? <div className="mypage-summary"><Link href="/admin/users"><span><FontAwesomeIcon icon={faUsers} /></span><div><strong>{d1 ? d1ProfileCount : (profiles as { count?: number }).count ?? 0}</strong><small>会員数</small></div></Link><Link href="/admin/recipes"><span><FontAwesomeIcon icon={faList} /></span><div><strong>{d1 ? d1RecipeCount : (recipes as { count?: number }).count ?? 0}</strong><small>公開レシピ</small></div></Link><Link href="/admin/reports"><span><FontAwesomeIcon icon={faFlag} /></span><div><strong>{d1 ? d1OpenReportCount : (openReports as { count?: number }).count ?? 0}</strong><small>要確認の通報</small></div></Link></div> : null}
         {section === "reports" ? <div className="admin-report-list">{reports.length ? reports.map((report) => {
           const targetHref = report.target_type === "recipe" ? `/recipes/${report.recipe_id}` : `/users/${report.profile_user_id}`;
           const targetName = report.target_type === "recipe" ? relationTitle(report.recipes) : profileNames.get(report.profile_user_id ?? "") ?? "削除済みプロフィール";
@@ -55,6 +69,7 @@ export default async function AdminPage({ params, searchParams }: { params: Prom
         {section === "recipes" ? <AdminRecipesPanel query={query} state={state} result={result} /> : null}
         {section === "notices" ? <AdminNoticesPanel /> : null}
         {section === "audit-logs" ? <AdminAuditPanel /> : null}
+        {section === "cutover-check" ? <AdminCutoverCheckPanel adminUserId={authData.user.id} /> : null}
         {section === "categories" ? <AdminTaxonomyPanel query={query} result={result} /> : null}
       </section></div>
   </main><SiteFooter /><BottomNav /></div>;
