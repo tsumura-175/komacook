@@ -50,13 +50,8 @@
 .auth-document section { margin-top: var(--space-8); }
 .auth-document h2 { margin: 0 0 var(--space-3); font-size: var(--text-card-title); }
 .auth-document p, .auth-document li { color: var(--color-ink-soft); line-height: 1.8; }
-.onboarding-return { display: grid; gap: var(--space-4); margin-top: var(--space-10); padding: var(--space-6); border: var(--rule-fine) solid var(--color-border); border-radius: var(--radius-card); background: linear-gradient(135deg, var(--color-paper) 0%, var(--color-coral-soft) 100%); text-align: center; }
-.onboarding-return p { margin: 0; font-size: var(--text-label); }
-.onboarding-return button { width: 100%; min-height: calc(var(--control-height-lg) + var(--space-3)); display: flex; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); border: var(--rule-fine) solid var(--color-coral-dark); border-radius: var(--radius-input); background: var(--color-coral-dark); color: var(--color-accent-ink); cursor: pointer; box-shadow: 0 var(--space-2) var(--space-4) color-mix(in oklch, var(--color-coral-dark) 22%, transparent); text-align: left; }
-.onboarding-return-icon { width: 2.25rem; height: 2.25rem; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--color-surface) 18%, transparent); }
-.onboarding-return button > span:last-child { display: grid; gap: 0.1rem; }
-.onboarding-return strong { font-size: var(--text-label); }
-.onboarding-return small { opacity: 0.82; font-size: var(--text-caption); }
+.onboarding-return { display: flex; justify-content: center; margin-top: var(--space-10); padding-top: var(--space-6); border-top: var(--rule-fine) solid var(--color-border); }
+.onboarding-return button { min-height: var(--control-height-lg); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: 0 var(--space-5); border: var(--rule-fine) solid var(--color-coral-dark); border-radius: var(--radius-input); background: var(--color-surface); color: var(--color-coral-dark); cursor: pointer; font-size: var(--text-label); font-weight: 800; }
 .onboarding-page { min-height: 100svh; padding: var(--space-8) var(--space-4); background: var(--color-paper); }
 .onboarding-card { width: min(100%, 44rem); margin: 0 auto; padding: var(--space-8); border: var(--rule-fine) solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-soft); }
 .onboarding-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-6) 0; }
@@ -88,5 +83,5 @@
 .onboarding-confirmation { margin-top: var(--space-8); }
 .onboarding-loading { margin: var(--space-8) 0 0; color: var(--color-ink-soft); text-align: center; }
 
-@media (hover: hover) and (pointer: fine) { .social-auth-button:hover, .auth-tabs button:hover { border-color: var(--color-coral); } .auth-home-link:hover, .forgot-link:hover, .auth-text-button:hover { color: var(--color-coral-strong); } .onboarding-return button:hover { background: var(--color-coral-strong); transform: translateY(-1px); } }
+@media (hover: hover) and (pointer: fine) { .social-auth-button:hover, .auth-tabs button:hover { border-color: var(--color-coral); } .auth-home-link:hover, .forgot-link:hover, .auth-text-button:hover { color: var(--color-coral-strong); } .onboarding-return button:hover { border-color: var(--color-coral-strong); background: var(--color-coral-soft); color: var(--color-coral-strong); } }
 @media (max-width: 600px) { .auth-page { place-items: start center; padding: 0; } .auth-card { min-height: 100svh; padding: var(--space-5) var(--space-4) var(--space-8); border: 0; border-radius: 0; box-shadow: none; } .auth-heading h1 { font-size: var(--text-section-title); } .onboarding-page { padding: 0; } .onboarding-card { min-height: 100svh; padding: var(--space-5) var(--space-4) var(--space-8); border: 0; border-radius: 0; box-shadow: none; } .family-grid { grid-template-columns: minmax(0, 1fr); } .avatar-icons { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
