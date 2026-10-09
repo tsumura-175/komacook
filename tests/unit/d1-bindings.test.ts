@@ -10,6 +10,7 @@ describe("R2画像キーの検証", () => {
     expect(isSafeImageKey(`${ownerId}/${recipeId}/${imageId}.webp`)).toBe(true);
     expect(isSafeImageKey(`${ownerId}/${recipeId}/steps/${imageId}.webp`)).toBe(true);
     expect(isSafeImageKey(`${ownerId}/staging/${imageId}.webp`)).toBe(true);
+    expect(isSafeImageKey(`${ownerId}/avatar-${imageId}.webp`)).toBe(true);
   });
 
   it("任意パスや拡張子は受け入れない", () => {
