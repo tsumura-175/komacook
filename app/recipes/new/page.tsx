@@ -86,14 +86,16 @@ export default function NewRecipePage({ mode = "new" }: { mode?: "new" | "edit" 
     const supabase = createClient();
     let cancelled = false;
     async function loadFormData() {
-      const categoryRequest = supabase.from("categories").select("id, name").eq("is_active", true).order("sort_order");
+      const categoryRequest = fetch("/api/categories", { cache: "no-store" })
+        .then(async (response) => response.ok ? response.json() as Promise<{ categories: Array<{ id: string; name: string }> }> : { categories: [] })
+        .catch(() => ({ categories: [] as Array<{ id: string; name: string }> }));
       const { data: authData } = mode === "edit" ? await supabase.auth.getUser() : { data: { user: null } };
       const recipeRequest = mode === "edit" && params.id && authData.user
         ? supabase.from("recipes").select("*, recipe_ingredients(*), recipe_steps(*), recipe_tags(tags(name))").eq("id", params.id).eq("owner_user_id", authData.user.id).single()
         : Promise.resolve({ data: null, error: null });
       const [categoryResult, recipeResult] = await Promise.all([categoryRequest, recipeRequest]);
       if (cancelled) return;
-      setCategories(categoryResult.data ?? []);
+      setCategories(categoryResult.categories ?? []);
       if (mode !== "edit") return;
       if (recipeResult.error || !recipeResult.data) {
         router.replace("/mypage/recipes");
