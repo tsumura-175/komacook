@@ -5,6 +5,8 @@ import { z } from "zod";
 import { parseRecipeQuantity } from "../../lib/recipe-editor";
 import { normalizeRecipeImage, normalizeRecipeStepImage } from "../../lib/recipe-image";
 import { createClient } from "../../lib/supabase/server";
+import { usesD1AppData } from "../../lib/d1-bindings";
+import { copyD1Recipe, moveD1RecipeToTrash, permanentlyDeleteD1Recipe, restoreD1Recipe, saveD1Recipe, toggleD1Favorite } from "../../lib/d1-recipe-actions";
 
 export type IngredientInput = { name: string; quantity: string; unit: string; note: string; group: string };
 export type RecipeStepInput = { clientId: number; instruction: string; imagePath?: string | null };
@@ -70,6 +72,11 @@ export async function saveRecipe(input: RecipeInput, intent: "autosave" | "draft
   if (!parsed.success) return { ok: false, error: "必須項目、材料、作り方の入力内容を確認してください。" };
   const { supabase, user } = await authenticatedClient();
   if (!user) return { ok: false, error: "ログインが必要です。" };
+  if (usesD1AppData()) {
+    const result = await saveD1Recipe(user.id, parsed.data, intent, imageData);
+    if (result.ok) refreshRecipePages(result.id);
+    return result;
+  }
   const values = parsed.data;
   const savedStatus = intent === "draft" ? "draft" : intent === "publish" ? "published" : values.id ? values.currentStatus : "draft";
   if (intent === "publish" && (!values.title || !values.categoryId || !values.ingredients.length || !values.steps.length)) {
@@ -232,6 +239,11 @@ export async function saveRecipe(input: RecipeInput, intent: "autosave" | "draft
 export async function toggleFavorite(recipeId: string): Promise<MutationResult> {
   const { supabase, user } = await authenticatedClient();
   if (!user) return { ok: false, error: "login_required" };
+  if (usesD1AppData()) {
+    const result = await toggleD1Favorite(user.id, recipeId);
+    if (result.ok) refreshRecipePages(recipeId);
+    return result;
+  }
   const { data: existing } = await supabase.from("favorites").select("recipe_id").eq("user_id", user.id).eq("recipe_id", recipeId).maybeSingle();
   const result = existing
     ? await supabase.from("favorites").delete().eq("user_id", user.id).eq("recipe_id", recipeId)
@@ -244,6 +256,11 @@ export async function toggleFavorite(recipeId: string): Promise<MutationResult> 
 export async function copyRecipe(recipeId: string): Promise<MutationResult> {
   const { supabase, user } = await authenticatedClient();
   if (!user) return { ok: false, error: "login_required" };
+  if (usesD1AppData()) {
+    const result = await copyD1Recipe(user.id, recipeId);
+    if (result.ok) refreshRecipePages(result.id);
+    return result;
+  }
   const { data, error } = await supabase.rpc("copy_recipe", { source_id: recipeId });
   if (error || !data) return { ok: false, error: error?.message ?? "コピーできませんでした。" };
   refreshRecipePages(String(data));
@@ -253,6 +270,11 @@ export async function copyRecipe(recipeId: string): Promise<MutationResult> {
 export async function moveRecipeToTrash(recipeId: string): Promise<MutationResult> {
   const { supabase, user } = await authenticatedClient();
   if (!user) return { ok: false, error: "login_required" };
+  if (usesD1AppData()) {
+    const result = await moveD1RecipeToTrash(user.id, recipeId);
+    if (result.ok) refreshRecipePages(recipeId);
+    return result;
+  }
   const { data, error } = await supabase.rpc("move_recipe_to_trash", { target_id: recipeId });
   if (error || !data) return { ok: false, error: error?.message ?? "レシピをゴミ箱へ移せませんでした。" };
   refreshRecipePages(recipeId);
@@ -262,6 +284,11 @@ export async function moveRecipeToTrash(recipeId: string): Promise<MutationResul
 export async function restoreRecipe(recipeId: string): Promise<MutationResult> {
   const { supabase, user } = await authenticatedClient();
   if (!user) return { ok: false, error: "login_required" };
+  if (usesD1AppData()) {
+    const result = await restoreD1Recipe(user.id, recipeId);
+    if (result.ok) refreshRecipePages(recipeId);
+    return result;
+  }
   const { data, error } = await supabase.rpc("restore_recipe", { target_id: recipeId });
   if (error || !data) return { ok: false, error: error?.message ?? "復元期限を過ぎているため、レシピを元に戻せませんでした。" };
   refreshRecipePages(recipeId);
@@ -271,6 +298,11 @@ export async function restoreRecipe(recipeId: string): Promise<MutationResult> {
 export async function permanentlyDeleteRecipe(recipeId: string): Promise<MutationResult> {
   const { supabase, user } = await authenticatedClient();
   if (!user) return { ok: false, error: "login_required" };
+  if (usesD1AppData()) {
+    const result = await permanentlyDeleteD1Recipe(user.id, recipeId);
+    if (result.ok) refreshRecipePages();
+    return result;
+  }
   const { data: recipe, error: lookupError } = await supabase.from("recipes").select("image_path, recipe_steps(image_path)").eq("id", recipeId).eq("owner_user_id", user.id).eq("status", "deleted").maybeSingle();
   if (lookupError || !recipe) return { ok: false, error: lookupError?.message ?? "削除対象のレシピが見つかりませんでした。" };
   const imagePaths = [recipe.image_path, ...(recipe.recipe_steps ?? []).map((step) => step.image_path)].filter((path): path is string => Boolean(path));

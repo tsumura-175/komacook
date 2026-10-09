@@ -65,12 +65,10 @@ export function SiteHeader() {
         if (active) setViewer({ signedIn: false, displayName: "", hasUnreadNotification: false });
         return;
       }
-      const [{ data: profile }, { count: unreadCount }] = await Promise.all([
-        supabase.from("profiles").select("display_name, avatar_kind, preset_avatar_key, avatar_color, avatar_path").eq("user_id", data.user.id).maybeSingle(),
-        supabase.from("user_notifications").select("id", { count: "exact", head: true }).eq("user_id", data.user.id).is("read_at", null),
-      ]);
-      const avatarUrl = profile?.avatar_path ? (await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)).data?.signedUrl ?? null : null;
-      if (active) setViewer({ signedIn: true, displayName: profile?.display_name ?? "マイページ", hasUnreadNotification: (unreadCount ?? 0) > 0, avatarKind: profile?.avatar_kind, presetKey: profile?.preset_avatar_key, color: profile?.avatar_color, avatarUrl });
+      const response = await fetch("/api/viewer", { cache: "no-store" });
+      const viewer = await response.json().catch(() => null) as Viewer | null;
+      if (active && viewer?.signedIn) setViewer(viewer);
+      else if (active) setViewer({ signedIn: true, displayName: "マイページ", hasUnreadNotification: false });
     }
     void loadViewer();
     const { data: listener } = supabase.auth.onAuthStateChange(() => void loadViewer());

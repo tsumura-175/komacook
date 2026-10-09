@@ -1,4 +1,16 @@
 import { createClient } from "./supabase/server";
+import { getD1Database, usesD1AppData } from "./d1-bindings";
+import { d1AvatarUrl, getD1Profile } from "./d1-profiles";
+import {
+  getD1Categories,
+  getD1FavoriteRecipes,
+  getD1HomeNotices,
+  getD1PublicRecipes,
+  getD1Recipe,
+  getD1RecipesByOwner,
+  getD1SearchOptions,
+  searchD1PublicRecipes,
+} from "./d1-recipes";
 
 export type RecipeIngredient = {
   id: string;
@@ -167,6 +179,11 @@ async function enrichRecipes(rawRecipes: RawRecipe[]): Promise<RecipeData[]> {
 }
 
 export async function getPublicRecipes(limit?: number) {
+  if (usesD1AppData()) {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    return getD1PublicRecipes(limit, data.user?.id ?? null);
+  }
   const supabase = await createClient();
   let query = supabase
     .from("recipes")
@@ -195,6 +212,11 @@ export type RecipeSearchFilters = {
 };
 
 export async function searchPublicRecipes(filters: RecipeSearchFilters = {}) {
+  if (usesD1AppData()) {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    return searchD1PublicRecipes(filters, data.user?.id ?? null);
+  }
   const supabase = await createClient();
   const pageSize = Math.min(Math.max(filters.pageSize ?? 12, 1), 50);
   const page = Math.max(filters.page ?? 1, 1);
@@ -229,6 +251,11 @@ export async function getPopularRecipes(limit = 3) {
 }
 
 export async function getPublicRecipesByOwner(ownerUserId: string) {
+  if (usesD1AppData()) {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    return getD1RecipesByOwner(ownerUserId, data.user?.id ?? null);
+  }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("recipes")
@@ -243,6 +270,11 @@ export async function getPublicRecipesByOwner(ownerUserId: string) {
 }
 
 export async function getRecipe(id: string) {
+  if (usesD1AppData()) {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    return getD1Recipe(id, data.user?.id ?? null);
+  }
   const supabase = await createClient();
   const { data, error } = await supabase.from("recipes").select(recipeSelect).eq("id", id).maybeSingle();
   if (error) throw new Error(`レシピを取得できませんでした: ${error.message}`);
@@ -254,6 +286,7 @@ export async function getMyRecipes() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return [];
+  if (usesD1AppData()) return getD1RecipesByOwner(authData.user.id, authData.user.id);
   const { data, error } = await supabase
     .from("recipes")
     .select(recipeSelect)
@@ -267,6 +300,7 @@ export async function getFavoriteRecipes() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return [];
+  if (usesD1AppData()) return getD1FavoriteRecipes(authData.user.id);
   const { data: favoriteRows, error } = await supabase
     .from("favorites")
     .select("recipe_id")
@@ -287,6 +321,7 @@ export async function getFavoriteRecipes() {
 }
 
 export async function getCategories() {
+  if (usesD1AppData()) return getD1Categories();
   const supabase = await createClient();
   const { data, error } = await supabase.from("categories").select("id, name").eq("is_active", true).order("sort_order");
   if (error) throw new Error(`カテゴリを取得できませんでした: ${error.message}`);
@@ -294,6 +329,7 @@ export async function getCategories() {
 }
 
 export async function getSearchOptions() {
+  if (usesD1AppData()) return getD1SearchOptions();
   const supabase = await createClient();
   const [categoriesResult, tagsResult, ingredientsResult] = await Promise.allSettled([
     getCategories(),
@@ -310,6 +346,7 @@ export async function getSearchOptions() {
 }
 
 export async function getHomeNotices(limit = 3) {
+  if (usesD1AppData()) return getD1HomeNotices(limit);
   const supabase = await createClient();
   const { data, error } = await supabase.from("notices").select("id,title,publish_at,is_pinned").order("is_pinned", { ascending: false }).order("publish_at", { ascending: false }).limit(limit);
   if (error) throw new Error(`お知らせを取得できませんでした: ${error.message}`);
@@ -326,6 +363,15 @@ export async function getCurrentProfile() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return null;
+  if (usesD1AppData()) {
+    const db = await getD1Database();
+    const [profile, recipeRows, favoriteRows] = await Promise.all([
+      getD1Profile(authData.user.id),
+      db.prepare("SELECT COUNT(*) AS count FROM recipes WHERE owner_user_id = ? AND status <> 'deleted'").bind(authData.user.id).first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) AS count FROM favorites WHERE user_id = ?").bind(authData.user.id).first<{ count: number }>(),
+    ]);
+    return { user: authData.user, profile, avatarUrl: d1AvatarUrl(profile), recipeCount: Number(recipeRows?.count ?? 0), favoriteCount: Number(favoriteRows?.count ?? 0) };
+  }
   const [{ data: profile }, { count: recipeCount }, { count: favoriteCount }] = await Promise.all([
     supabase.from("profiles").select("*").eq("user_id", authData.user.id).single(),
     supabase.from("recipes").select("id", { count: "exact", head: true }).eq("owner_user_id", authData.user.id).neq("status", "deleted"),

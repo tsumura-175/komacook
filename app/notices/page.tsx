@@ -3,13 +3,16 @@ import { faChevronRight, faEnvelope, faThumbtack } from "@fortawesome/free-solid
 import Link from "next/link";
 import { BottomNav, SiteFooter, SiteHeader } from "../components/site-shell";
 import { createClient } from "../../lib/supabase/server";
+import { getD1Database, usesD1AppData } from "../../lib/d1-bindings";
 
 export default async function NoticesPage() {
   const supabase = await createClient();
-  const [{ data: notices }, { data: authData }] = await Promise.all([supabase.from("notices").select("id,title,body,is_pinned,publish_at").order("is_pinned", { ascending: false }).order("publish_at", { ascending: false }), supabase.auth.getUser()]);
-  const { data: personalNotifications } = authData.user ? await supabase.from("user_notifications").select("id,title,body,read_at,created_at").eq("user_id", authData.user.id).order("created_at", { ascending: false }) : { data: [] };
-  const ids = (notices ?? []).map((notice) => notice.id);
-  const { data: reads } = authData.user && ids.length ? await supabase.from("notice_reads").select("notice_id").eq("user_id", authData.user.id).in("notice_id", ids) : { data: [] };
+  const { data: authData } = await supabase.auth.getUser();
+  const d1 = usesD1AppData() ? await getD1Database() : null;
+  const notices = d1 ? (await d1.prepare(`SELECT id, title, body, is_pinned, publish_at FROM notices WHERE status = 'published' AND publish_at IS NOT NULL AND publish_at <= datetime('now') AND (end_at IS NULL OR end_at > datetime('now')) AND (audience = 'all' OR ? <> '') ORDER BY is_pinned DESC, publish_at DESC`).bind(authData.user?.id ?? "").all()).results ?? [] : (await supabase.from("notices").select("id,title,body,is_pinned,publish_at").order("is_pinned", { ascending: false }).order("publish_at", { ascending: false })).data ?? [];
+  const personalNotifications = authData.user ? (d1 ? (await d1.prepare("SELECT id, title, body, read_at, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC").bind(authData.user.id).all()).results ?? [] : (await supabase.from("user_notifications").select("id,title,body,read_at,created_at").eq("user_id", authData.user.id).order("created_at", { ascending: false })).data ?? []) : [];
+  const ids = notices.map((notice) => String(notice.id));
+  const reads = authData.user && ids.length ? (d1 ? (await d1.prepare(`SELECT notice_id FROM notice_reads WHERE user_id = ? AND notice_id IN (${ids.map(() => "?").join(", ")})`).bind(authData.user.id, ...ids).all()).results ?? [] : (await supabase.from("notice_reads").select("notice_id").eq("user_id", authData.user.id).in("notice_id", ids)).data ?? []) : [];
   const readIds = new Set((reads ?? []).map((read) => read.notice_id));
   return <div className="app-shell member-page-shell"><SiteHeader /><main className="member-page-main"><header className="member-page-heading"><div><h1>お知らせ</h1><p>こまクックからの重要なご案内を確認できます。</p></div></header>
     {authData.user && (personalNotifications ?? []).length ? <section className="notice-group" aria-labelledby="personal-notices-heading"><div className="notice-group-heading"><FontAwesomeIcon icon={faEnvelope} /><div><h2 id="personal-notices-heading">あなたへのお知らせ</h2><p>運営による対応内容を、本人だけに表示しています。</p></div></div><div className="simple-list">{personalNotifications?.map((notice) => <article key={notice.id} className={notice.read_at ? "" : "is-unread"}><div><div className="notice-labels"><span className="notice-audience">個別</span>{notice.read_at ? null : <span className="notice-unread">未読</span>}</div><h3><Link href={`/notifications/${notice.id}`}>{notice.title}</Link></h3><p>{notice.body.length > 90 ? `${notice.body.slice(0, 90)}…` : notice.body}</p></div><div><time>{new Date(notice.created_at).toLocaleDateString("ja-JP")}</time><Link className="outline-icon-button" href={`/notifications/${notice.id}`} aria-label={`${notice.title}を読む`}><FontAwesomeIcon icon={faChevronRight} /></Link></div></article>)}</div></section> : null}

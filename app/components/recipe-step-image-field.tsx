@@ -4,7 +4,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCamera, faImage, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import Image from "next/image";
-import { createClient } from "../../lib/supabase/client";
 import { coverImageToWebp } from "./client-image-processing";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -35,20 +34,20 @@ export const RecipeStepImageField = forwardRef<RecipeStepImageFieldHandle, Props
     async stageSource(formData) {
       if (!sourceFile || !dirtyRef.current) return;
       const normalized = await coverImageToWebp(sourceFile, 960, 720, "recipe-step.webp", 0.84);
-      const supabase = createClient();
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) throw new Error("ログインが必要です。");
-      const stagedPath = `${data.user.id}/staging/${crypto.randomUUID()}.webp`;
-      const { error: uploadError } = await supabase.storage.from("recipe-images").upload(stagedPath, normalized, { contentType: "image/webp", upsert: false });
-      if (uploadError) throw new Error("工程写真を一時保存できませんでした。もう一度お試しください。");
-      stagedPathRef.current = stagedPath;
-      formData.set(`step_image_staged_${rowId}`, stagedPath);
+      const payload = new FormData();
+      payload.set("file", normalized);
+      payload.set("purpose", "recipe_step");
+      const response = await fetch("/api/images/staging", { method: "POST", body: payload });
+      const result = await response.json().catch(() => null) as { key?: string; error?: string } | null;
+      if (!response.ok || !result?.key) throw new Error(result?.error ?? "工程写真を一時保存できませんでした。もう一度お試しください。");
+      stagedPathRef.current = result.key;
+      formData.set(`step_image_staged_${rowId}`, result.key);
     },
     async discardStagedSource() {
       if (!stagedPathRef.current) return;
       const stagedPath = stagedPathRef.current;
       stagedPathRef.current = null;
-      await createClient().storage.from("recipe-images").remove([stagedPath]);
+      await fetch(`/api/images/staging?key=${encodeURIComponent(stagedPath)}`, { method: "DELETE" });
     },
     markPersisted() {
       dirtyRef.current = false;

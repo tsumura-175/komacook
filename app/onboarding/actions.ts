@@ -5,6 +5,9 @@ import { normalizeAvatarImage } from "../../lib/avatar-image";
 import { getAuthCallbackUrl } from "../../lib/site-url";
 import { createAdminClient } from "../../lib/supabase/admin";
 import { createClient } from "../../lib/supabase/server";
+import { ensureD1Profile, replaceD1Avatar, updateD1Profile } from "../../lib/d1-profiles";
+import { deleteR2Images, putR2Image } from "../../lib/r2-images";
+import { usesD1AppData } from "../../lib/d1-bindings";
 
 const schema = z.object({
   displayName: z.string().trim().min(1).max(30),
@@ -75,6 +78,35 @@ export async function completeOnboarding(formData: FormData): Promise<Onboarding
   const { data: authData } = await supabase.auth.getUser();
   const user = authData.user;
   if (!user) return { ok: false, error: "ログインが必要です。" };
+
+  if (usesD1AppData()) {
+    const value = parsed.data;
+    const fallbackName = String(user.user_metadata.full_name ?? user.user_metadata.name ?? "").trim();
+    const currentProfile = await ensureD1Profile(user.id, fallbackName || "こまクックユーザー");
+    if (!currentProfile || currentProfile.account_status !== "active") return { ok: false, error: currentProfile?.account_status === "deletion_pending" ? "このアカウントは退会処理中です。" : "このアカウントは現在利用停止中です。" };
+    const hasConfirmedEmail = Boolean(user.email && user.email_confirmed_at);
+    if (!hasConfirmedEmail && !value.contactEmail) return { ok: false, error: "連絡用メールアドレスを入力してください。" };
+    let avatarKey = value.avatarMode === "upload" ? currentProfile.avatar_key : null;
+    let uploadedKey: string | null = null;
+    const avatar = formData.get("avatar");
+    if (value.avatarMode === "upload" && avatar instanceof File && avatar.size > 0) {
+      try {
+        const normalizedAvatar = await normalizeAvatarImage(avatar);
+        uploadedKey = `${user.id}/avatar-${crypto.randomUUID()}.webp`;
+        await putR2Image(uploadedKey, normalizedAvatar);
+        avatarKey = uploadedKey;
+      } catch { return { ok: false, error: "プロフィール画像を保存できませんでした。" }; }
+    }
+    if (value.avatarMode === "upload" && !avatarKey) return { ok: false, error: "プロフィール画像を選択してください。" };
+    if (!hasConfirmedEmail) {
+      const { error: emailError } = await supabase.auth.updateUser({ email: value.contactEmail }, { emailRedirectTo: getAuthCallbackUrl("/onboarding") });
+      if (emailError) { if (uploadedKey) await deleteR2Images([uploadedKey]); return { ok: false, error: "確認メールを送信できませんでした。別のメールアドレスを確認してください。" }; }
+    }
+    const saved = await updateD1Profile(user.id, { displayName: value.displayName, servings: value.servings, adults: value.adults === "" ? null : value.adults, children: value.children === "" ? null : value.children, showFamily: value.familyPublic === "public", avatarKind: value.avatarMode, presetAvatarKey: value.presetAvatarKey, avatarColor: value.avatarColor, avatarKey, onboardingCompleted: hasConfirmedEmail });
+    if (!saved) { if (uploadedKey) await deleteR2Images([uploadedKey]); return { ok: false, error: "初回設定を保存できませんでした。" }; }
+    await replaceD1Avatar(user.id, currentProfile.avatar_key, avatarKey);
+    return { ok: true, confirmationRequired: !hasConfirmedEmail };
+  }
 
   let currentProfile: OnboardingProfile | null;
   try {

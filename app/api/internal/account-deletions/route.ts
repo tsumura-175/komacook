@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteAccountData, deleteClaimedRecipe } from "../../../../lib/maintenance";
 import { createAdminClient } from "../../../../lib/supabase/admin";
+import { usesD1AppData } from "../../../../lib/d1-bindings";
+import { runD1Maintenance } from "../../../../lib/d1-maintenance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +16,10 @@ function errorMessage(error: unknown, fallback: string) {
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (usesD1AppData()) {
+    try { return NextResponse.json(await runD1Maintenance()); }
+    catch (error) { return NextResponse.json({ error: errorMessage(error, "D1保守処理に失敗しました。") }, { status: 500 }); }
+  }
 
   const supabase = createAdminClient();
   const { data: contactRateLimitsDeleted, error: contactLimitCleanupError } = await supabase.rpc("cleanup_contact_rate_limits");

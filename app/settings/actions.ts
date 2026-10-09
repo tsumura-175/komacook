@@ -8,6 +8,9 @@ import { familySettingsSchema, GOOGLE_UNLINK_CONFIRMATION, valuesMatch } from ".
 import { validateNewPassword } from "../../lib/password-policy";
 import { getAuthCallbackUrl } from "../../lib/site-url";
 import { createClient } from "../../lib/supabase/server";
+import { getD1Profile, markD1DeletionPending, replaceD1Avatar, updateD1Profile } from "../../lib/d1-profiles";
+import { deleteR2Images, putR2Image } from "../../lib/r2-images";
+import { usesD1AppData } from "../../lib/d1-bindings";
 
 export async function updateProfile(formData: FormData) {
   const parsed = z.object({
@@ -21,6 +24,29 @@ export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) redirect("/login?next=/settings/profile");
+  if (usesD1AppData()) {
+    const currentProfile = await getD1Profile(data.user.id);
+    if (!currentProfile) redirect("/settings/profile?error=profile");
+    let avatarKey = parsed.data.avatarMode === "upload" ? currentProfile.avatar_key : null;
+    let uploadedKey: string | null = null;
+    const avatar = formData.get("avatar");
+    if (parsed.data.avatarMode === "upload" && avatar instanceof File && avatar.size > 0) {
+      try {
+        const normalizedAvatar = await normalizeAvatarImage(avatar);
+        uploadedKey = `${data.user.id}/avatar-${crypto.randomUUID()}.webp`;
+        await putR2Image(uploadedKey, normalizedAvatar);
+        avatarKey = uploadedKey;
+      } catch { redirect("/settings/profile?error=avatar"); }
+    }
+    if (parsed.data.avatarMode === "upload" && !avatarKey) redirect("/settings/profile?error=avatar");
+    const saved = await updateD1Profile(data.user.id, { displayName: parsed.data.displayName, servings: parsed.data.servings, adults: family.data.adults, children: family.data.children, showFamily: family.data.showFamily, avatarKind: parsed.data.avatarMode, presetAvatarKey: parsed.data.presetAvatarKey, avatarColor: parsed.data.avatarColor, avatarKey });
+    if (!saved) { if (uploadedKey) await deleteR2Images([uploadedKey]); redirect("/settings/profile?error=profile"); }
+    await replaceD1Avatar(data.user.id, currentProfile.avatar_key, avatarKey);
+    revalidatePath("/mypage");
+    revalidatePath(`/users/${data.user.id}`);
+    revalidatePath("/", "layout");
+    redirect("/settings/profile?message=saved");
+  }
   const { data: currentProfile } = await supabase.from("profiles").select("avatar_path").eq("user_id", data.user.id).single();
   let avatarPath = parsed.data.avatarMode === "upload" ? currentProfile?.avatar_path ?? null : null;
   let uploadedPath: string | null = null;
@@ -126,6 +152,12 @@ export async function requestAccountDeletion() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) redirect("/login?next=/settings/withdraw");
+  if (usesD1AppData()) {
+    try {
+      await markD1DeletionPending(data.user.id);
+      redirect("/settings/withdraw?message=requested");
+    } catch { redirect("/settings/withdraw?error=withdraw"); }
+  }
   const { error } = await supabase.from("account_deletion_requests").upsert({ user_id: data.user.id, status: "pending", requested_at: new Date().toISOString(), delete_after: new Date(Date.now() + 30 * 86400000).toISOString() });
   if (!error) await supabase.from("profiles").update({ account_status: "deletion_pending" }).eq("user_id", data.user.id);
   redirect(error ? "/settings/withdraw?error=withdraw" : "/settings/withdraw?message=requested");

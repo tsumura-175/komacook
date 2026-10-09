@@ -5,6 +5,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { GOOGLE_UNLINK_CONFIRMATION } from "../../../lib/account-settings";
 import { createClient } from "../../../lib/supabase/server";
+import { d1AvatarUrl, getD1Profile } from "../../../lib/d1-profiles";
+import { usesD1AppData } from "../../../lib/d1-bindings";
 import { BottomNav, SiteFooter, SiteHeader } from "../../components/site-shell";
 import { PasswordField } from "../../login/password-field";
 import { linkGoogle, requestAccountDeletion, signOutAll, unlinkGoogle, updateEmail, updatePassword } from "../actions";
@@ -52,10 +54,10 @@ export default async function SettingsPage({ params, searchParams }: { params: P
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) redirect(`/login?next=/settings/${section}`);
-  const { data: profile } = authData.user
-    ? await supabase.from("profiles").select("display_name, standard_servings, family_adults, family_children, show_family, avatar_kind, preset_avatar_key, avatar_color, avatar_path").eq("user_id", authData.user.id).single()
-    : { data: null };
-  const avatarUrl = profile?.avatar_path ? (await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)).data?.signedUrl ?? null : null;
+  const d1Profile = usesD1AppData() ? await getD1Profile(authData.user.id) : null;
+  const { data: supabaseProfile } = d1Profile ? { data: null } : await supabase.from("profiles").select("display_name, standard_servings, family_adults, family_children, show_family, avatar_kind, preset_avatar_key, avatar_color, avatar_path").eq("user_id", authData.user.id).single();
+  const profile = d1Profile ? { ...d1Profile, avatar_path: d1Profile.avatar_key } : supabaseProfile;
+  const avatarUrl = d1Profile ? d1AvatarUrl(d1Profile) : profile?.avatar_path ? (await supabase.storage.from("avatars").createSignedUrl(profile.avatar_path, 3600)).data?.signedUrl ?? null : null;
   const identities = authData.user?.identities ?? [];
   const providers = new Set(identities.map((identity) => identity.provider));
   const googleIdentity = identities.find((identity) => identity.provider === "google");

@@ -3,7 +3,6 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCamera, faImage, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { createClient } from "../../lib/supabase/client";
 import { cropImageToWebp } from "./client-image-processing";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -68,21 +67,20 @@ export const RecipeImageField = forwardRef<RecipeImageFieldHandle, Props>(functi
         "recipe.webp",
         0.86,
       );
-      const supabase = createClient();
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) throw new Error("ログインが必要です。");
-      const stagedPath = `${data.user.id}/staging/${crypto.randomUUID()}.webp`;
-      const { error: uploadError } = await supabase.storage.from("recipe-images").upload(stagedPath, normalized, { contentType: "image/webp", upsert: false });
-      if (uploadError) throw new Error("画像を一時保存できませんでした。もう一度お試しください。");
-      stagedPathRef.current = stagedPath;
-      formData.set("staged_image_path", stagedPath);
+      const payload = new FormData();
+      payload.set("file", normalized);
+      payload.set("purpose", "recipe");
+      const response = await fetch("/api/images/staging", { method: "POST", body: payload });
+      const result = await response.json().catch(() => null) as { key?: string; error?: string } | null;
+      if (!response.ok || !result?.key) throw new Error(result?.error ?? "画像を一時保存できませんでした。もう一度お試しください。");
+      stagedPathRef.current = result.key;
+      formData.set("staged_image_path", result.key);
     },
     async discardStagedSource() {
       const stagedPath = stagedPathRef.current;
       if (!stagedPath) return;
       stagedPathRef.current = null;
-      const supabase = createClient();
-      await supabase.storage.from("recipe-images").remove([stagedPath]);
+      await fetch(`/api/images/staging?key=${encodeURIComponent(stagedPath)}`, { method: "DELETE" });
     },
     markPersisted() {
       dirtyRef.current = false;
