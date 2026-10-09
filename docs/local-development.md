@@ -95,7 +95,7 @@ npm run test:visual:update
 
 ローカル接続値は `.env.local` に保存します。このファイルはGit管理対象外です。本番環境ではSupabase CloudのURLとPublishable Keyへ差し替えます。
 
-メール送信はSMTPではなくResendのHTTP APIを使用します。本番では `RESEND_API_KEY` をSecret、`EMAIL_FROM` と `CONTACT_TO_EMAIL` を環境変数に設定します。ローカルで外部送信を避ける場合は `MAIL_DELIVERY_MODE=disabled` を設定してください。この場合、フォーム送信は成功扱いになりますが実メールは送信されません。
+メール送信はSMTPではなくResendのHTTP APIを使用します。本番では公開WorkerがD1の`mail_outbox`へ登録し、`komacook-maintenance` Workerだけが`RESEND_API_KEY`と`EMAIL_FROM`を使って送信します。公開Workerには`CONTACT_TO_EMAIL`と`CONTACT_RATE_LIMIT_SECRET`を設定します。ローカルで外部送信を避ける場合は `MAIL_DELIVERY_MODE=disabled` を設定してください。この場合、フォーム送信は成功扱いになりますが実メールは送信されません。
 
 問い合わせの連続送信制限でIP等を不可逆化するため、本番では十分に長いランダム値を`CONTACT_RATE_LIMIT_SECRET`へ設定します。この値を変更すると既存の制限識別子との対応が切り替わります。
 
@@ -116,16 +116,11 @@ npm run maintenance:run
 
 互換性のため、従来の`npm run accounts:purge`も同じ処理を実行します。
 
-本番はSupabase DashboardのCronで、毎日3:00（日本時間）に次のHTTPリクエストを登録します。Cronの時刻はUTCのため、スケジュールは `0 18 * * *` です。
-
-- Method: `POST`
-- URL: `https://本番ドメイン/api/internal/account-deletions`
-- Header: `Authorization: Bearer <CRON_SECRET>`
-- Body: `{}`
+本番はCloudflareの`komacook-maintenance` Workerが担当します。15分ごとにメール再送と期限切れの一時画像を掃除し、毎日03:10 JST（UTCの`10 18 * * *`）に認証付きで退会削除APIを実行します。`CRON_SECRET`は公開WorkerとメンテナンスWorkerに同じ値を設定してください。
 
 処理は、ゴミ箱へ移して30日を過ぎたレシピと完成画像を完全削除します。退会処理では非公開レシピとその完成画像、プロフィール画像、Auth会員情報を削除し、公開レシピは投稿者を匿名化して残します。古い画像一時ファイルも削除します。失敗した処理は次回のCronで再試行されます。
 
-Vercelへデプロイする場合は`vercel.json`にも同じ日次スケジュールを定義済みです。Supabase CronとVercel Cronを同時には有効化せず、どちらか一方を使用してください。
+退会削除のためにSupabase CronやVercel Cronを追加設定する必要はありません。複数のCronを有効にすると重複実行の原因になります。
 
 ## ヘルスチェックとバックアップ
 
